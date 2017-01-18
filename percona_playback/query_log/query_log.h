@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <tbb/atomic.h>
 
 PERCONA_PLAYBACK_API
@@ -40,6 +41,7 @@ class QueryLogEntry : public QueryEntry
 private:
   uint64_t rows_sent;
   uint64_t rows_examined;
+  boost::posix_time::ptime start_time;
   double query_time;
   std::vector<std::string> info;
   std::string set_timestamp_query;

@@ -22,6 +22,7 @@
 #include <fstream>
 #include <stdint.h>
 #include <assert.h>
+#include <ctime>
 #include <boost/thread.hpp>
 #include "query_log.h"
 #include <unistd.h>
@@ -44,6 +45,7 @@
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/regex.hpp>
 
 namespace po= boost::program_options;
 
@@ -68,6 +70,10 @@ public:
   {};
 
   void* operator() (void*);
+
+private:
+  bool parse_time(const std::string& s);
+
 private:
   tbb::atomic<uint64_t> *nr_entries;
   tbb::atomic<uint64_t> *nr_queries;
@@ -75,6 +81,10 @@ private:
   unsigned int run_count;
   char *next_line;
   ssize_t next_len;
+
+
+  boost::posix_time::ptime start_time;
+
 };
 
 void* dispatch(void *input_);
@@ -114,8 +124,10 @@ void* ParseQueryLogFunc::operator() (void*)  {
   for (;;) {
     q= line+len;
 
-    if (startswith(p, "# Time"))
+    if (startswith(p, "# Time")) {
+      parse_time(p);
       goto next;
+    }
 
     if ((p[0] != '#' && (q-p) >= (ssize_t)strlen("started with:\n"))
     && startswith(q- strlen("started with:\n"), "started with:"))
@@ -185,6 +197,24 @@ void* ParseQueryLogFunc::operator() (void*)  {
   return entries;
 }
 
+bool ParseQueryLogFunc::parse_time(const std::string& s) {
+  // # Time: 090402 9:23:36
+  // # Time: 090402 9:23:36.123456
+  static boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d*)\\.?(\\d+)?\n");
+  boost::smatch results;
+  if (!boost::regex_match(s, results, time_regex))
+      return false;
+
+  int year = std::atol(results.str(1).c_str());
+  year += year < 70 ? 2000 : 1900;
+  boost::gregorian::date date(year, std::atol(results.str(2).c_str()), std::atol(results.str(3).c_str()));
+  boost::posix_time::time_duration td(std::atol(results.str(4).c_str()), std::atol(results.str(5).c_str()), std::atol(results.str(6).c_str()));
+  if (results[7].matched /* microsecs */) {
+    td += boost::posix_time::microseconds(std::atol(results.str(7).c_str()));
+  }
+  start_time = boost::posix_time::ptime(date, td);
+  return true;
+}
 
 void QueryLogEntry::execute(DBThread *t)
 {
