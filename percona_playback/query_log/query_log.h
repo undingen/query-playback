@@ -50,6 +50,7 @@ public:
 
   QueryLogEntry() : rows_sent(0), rows_examined(0), query_time(0) {}
 
+  void setTime(boost::posix_time::ptime time) { start_time = time; }
   double getQueryTime() { return query_time; }
 
   void add_query_line(const std::string &s);

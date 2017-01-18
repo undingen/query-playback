@@ -151,6 +151,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
         entries->push_back(tmp_entry);
       count++;
       tmp_entry.reset(new QueryLogEntry());
+      tmp_entry->setTime(start_time);
       (*this->nr_entries)++;
     }
 
@@ -200,7 +201,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
 bool ParseQueryLogFunc::parse_time(const std::string& s) {
   // # Time: 090402 9:23:36
   // # Time: 090402 9:23:36.123456
-  static boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d*)\\.?(\\d+)?\n");
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\n");
   boost::smatch results;
   if (!boost::regex_match(s, results, time_regex))
       return false;
@@ -213,6 +214,7 @@ bool ParseQueryLogFunc::parse_time(const std::string& s) {
     td += boost::posix_time::microseconds(std::atol(results.str(7).c_str()));
   }
   start_time = boost::posix_time::ptime(date, td);
+  std::cout << start_time << std::endl;
   return true;
 }
 
