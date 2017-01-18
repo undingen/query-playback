@@ -21,13 +21,13 @@ In Debian-based distributions, you need to: ::
 
   # apt-get install debhelper autoconf automake libtool \
   gettext intltool libpcap-dev libtbb-dev libmysqlclient-dev \ 
-  libboost-program-options-dev libboost-thread-dev pkg-config
+  libboost-program-options-dev libboost-thread-dev libboost-regex-dev pkg-config
 
 In ``RPM``-based distributions, you need to: ::
 
   # yum install autoconf automake libtool gettext-devel \
   libpcap-devel tbb-devel mysql mysql-devel intltool \
-  boost-program-options-devel boost-thread-devel pkgconfig
+  boost-program-options-devel boost-thread-devel boost-regex-devel pkgconfig
 
 Package ``libmysqlclient-dev`` is not strictly needed for compiling, but if you don't have it, you don't get to do the play back part.
 
