@@ -4,27 +4,22 @@
 #include <iostream>
 #include <stdlib.h>
 
-#include <tbb/pipeline.h>
-#include <tbb/tick_count.h>
-#include <tbb/task_scheduler_init.h>
-#include <tbb/tbb_allocator.h>
 #include <tbb/atomic.h>
-#include <tbb/concurrent_queue.h>
-#include <tbb/concurrent_hash_map.h>
+
+#include <percona_playback/plugin.h>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-class ParseGeneralLog : public tbb::filter {
+class ParseGeneralLog {
     public:
       ParseGeneralLog(FILE *input_file_,
                 unsigned int run_count_,
                 tbb::atomic<uint64_t> *entries_,
                 tbb::atomic<uint64_t> *queries_)
-        : tbb::filter(true),
-          nr_entries(entries_),
+        : nr_entries(entries_),
           nr_queries(queries_),
           input_file(input_file_),
           run_count(run_count_),
@@ -32,7 +27,7 @@ class ParseGeneralLog : public tbb::filter {
           next_len(0)
       {};
 
-      void* operator() (void*);
+      boost::shared_ptr<QueryEntryPtrVec> getEntries();
 
     private:
       tbb::atomic<uint64_t> *nr_entries;

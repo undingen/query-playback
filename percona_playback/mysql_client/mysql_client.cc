@@ -68,13 +68,13 @@ void MySQLDBThread::disconnect()
   mysql_close(&handle);
 }
 
-void MySQLDBThread::execute_query(const std::string &query, QueryResult *r,
+void MySQLDBThread::execute_query(boost::string_ref query, QueryResult *r,
 				  const QueryResult &)
 {
   int mr;
   for(unsigned i = 0; i < max_err_num; ++i)
   {
-    mr= mysql_real_query(&handle, query.c_str(), query.length());
+    mr= mysql_real_query(&handle, query.data(), query.length());
     r->setError(mr);
     if(mr != 0)
     {
@@ -123,8 +123,8 @@ private:
 public:
   MySQLDBClientPlugin(std::string _name) : DBClientPlugin(_name) {};
 
-  virtual DBThread* create(uint64_t _thread_id) {
-    return new MySQLDBThread(_thread_id, &options);
+  virtual DBThread* create(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) {
+    return new MySQLDBThread(_thread_id, &options, diff);
   }
 
   virtual boost::program_options::options_description* getProgramOptions() {

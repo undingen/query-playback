@@ -8,9 +8,9 @@
 
 #include <percona_playback/general_log/parse_general_log.h>
 
-void* ParseGeneralLog::operator() (void*)
+boost::shared_ptr<QueryEntryPtrVec> ParseGeneralLog::getEntries()
 {
-    std::vector<boost::shared_ptr<GeneralLogEntry> > *entries = new std::vector<boost::shared_ptr<GeneralLogEntry> >();
+    boost::shared_ptr<QueryEntryPtrVec> entries = boost::shared_ptr<QueryEntryPtrVec>(new QueryEntryPtrVec());
     boost::shared_ptr<GeneralLogEntry> tmp_entry(new GeneralLogEntry());
 
     char *line= NULL;
@@ -26,8 +26,7 @@ void* ParseGeneralLog::operator() (void*)
     }
     else if ((len = getline(&line, &buflen, input_file)) == -1)
     {
-        delete entries;
-        return NULL;
+        return entries;
     }
 
     char *p = line;
@@ -54,7 +53,7 @@ void* ParseGeneralLog::operator() (void*)
             tmp_entry->add_query_line(std::string(line));
             if (!tmp_entry->getQuery().empty())
             {
-                entries->push_back(tmp_entry);
+                entries->push(tmp_entry);
                 (*nr_queries)++;
                 (*nr_entries)++;
                 tmp_entry.reset(new GeneralLogEntry());

@@ -16,88 +16,85 @@
 #include "percona_playback/plugin.h"
 #include "percona_playback/db_thread.h"
 
-#include <tbb/concurrent_hash_map.h>
+#include <boost/chrono.hpp>
+
+extern percona_playback::DBClientPlugin *g_dbclient_plugin;
+
+static bool sort_by_time(DBThread* left, DBThread* right) {
+  return left->queries.front() < right->queries.front();
+}
+
+static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
+  if (!query_entries || query_entries->empty())
+    return;
+
+  typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
+  DBExecutorsTable  executors;
+
+  boost::chrono::system_clock::time_point start_time = query_entries->top()->getStartTime();
+  boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
+  boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
+
+  while (!query_entries->empty()) {
+    QueryEntryPtr entry =  query_entries->top();
+    query_entries->pop();
+
+    uint64_t thread_id= entry->getThreadId();
+    DBThread*& db_thread = executors[thread_id];
+    if (!db_thread)
+      db_thread= g_dbclient_plugin->create(thread_id, diff);
+    db_thread->queries.push(entry);
+  }
+
+  std::vector<DBThread*> threads_sorted_by_start_time;
+  threads_sorted_by_start_time.reserve(executors.size());
+  for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
+  {
+    threads_sorted_by_start_time.push_back(it->second);
+  }
+  std::stable_sort(threads_sorted_by_start_time.begin(), threads_sorted_by_start_time.end(), sort_by_time);
+
+  for (std::vector<DBThread*>::iterator it = threads_sorted_by_start_time.begin(), it_end = threads_sorted_by_start_time.end(); it != it_end; ++it)
+  {
+    boost::this_thread::sleep_until((*it)->queries.front()->getStartTime() + diff - boost::chrono::milliseconds(10));
+    (*it)->start_thread();
+  }
+
+
+  for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
+  {
+    it->second->join();
+    delete it->second;
+  }
+}
 
 class ThreadPerConnectionDispatcher :
 	public percona_playback::DispatcherPlugin
 {
-  typedef tbb::concurrent_hash_map<uint64_t, DBThread*> DBExecutorsTable;
-  DBExecutorsTable  executors;
-  void db_thread_func(DBThread *thread);
   void start_thread(DBThread *thread);
 
 public:
   ThreadPerConnectionDispatcher(std::string _name) :
 	  DispatcherPlugin(_name) {}
 
-  void dispatch(QueryEntryPtr query_entry);
-  bool finish_and_wait(uint64_t thread_id);
+  void dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries);
   void finish_all_and_wait();
+
+  boost::thread thread;
 };
 
-extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
 void
-ThreadPerConnectionDispatcher::dispatch(QueryEntryPtr query_entry)
+ThreadPerConnectionDispatcher::dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries)
 {
-  uint64_t thread_id= query_entry->getThreadId();
-  {
-    DBExecutorsTable::accessor a;
-    if (executors.insert(a, thread_id))
-    {
-      DBThread *db_thread= g_dbclient_plugin->create(thread_id);
-      a->second= db_thread;
-      db_thread->start_thread();
-    }
-    a->second->queries->push(query_entry);
-  }
-}
-
-bool
-ThreadPerConnectionDispatcher::finish_and_wait(uint64_t thread_id)
-{
-  DBThread *db_thread= NULL;
-  {
-    DBExecutorsTable::accessor a;
-    if (executors.find(a, thread_id))
-    {
-      db_thread= a->second;
-      executors.erase(a);
-    }
-  }
-
-  if (!db_thread)
-    return false;
-
-  db_thread->queries->push(QueryEntryPtr(new FinishEntry(thread_id)));
-  db_thread->join();
-
-  delete db_thread;
-
-  return true;
+  thread = boost::thread(dispatchQueries, query_entries);
 }
 
 void
 ThreadPerConnectionDispatcher::finish_all_and_wait()
 {
-  QueryEntryPtr shutdown_command(new FinishEntry(0));
-
-  while(executors.size())
-  {
-    uint64_t thread_id;
-    DBThread *t;
-    {
-      DBExecutorsTable::const_iterator iter= executors.begin();
-      thread_id= (*iter).first;
-      t= (*iter).second;
-    }
-    executors.erase(thread_id);
-
-    t->queries->push(shutdown_command);
-    t->join();
-
-    delete t;
-  }
+  if (thread.joinable())
+    thread.join();
 }
 
 static void init_plugin(percona_playback::PluginRegistry &r)

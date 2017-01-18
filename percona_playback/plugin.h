@@ -22,6 +22,7 @@
 #include <map>
 #include <boost/shared_ptr.hpp>
 #include <boost/function.hpp>
+#include <boost/utility/string_ref.hpp>
 #include "percona_playback/query_entry.h"
 #include <percona_playback/visibility.h>
 #include <percona_playback/version.h>
@@ -77,7 +78,7 @@ class DBClientPlugin : public plugin
 
   DBClientPlugin(std::string _name) : name(_name) {};
 
-  virtual DBThread *create(uint64_t _thread_id)=0;
+  virtual DBThread *create(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff)=0;
 };
 
 class ReportPlugin : public plugin
@@ -88,7 +89,7 @@ class ReportPlugin : public plugin
   ReportPlugin(std::string _name) : name(_name) {}
 
   virtual void query_execution(const uint64_t thread_id,
-			       const std::string &query,
+             boost::string_ref query,
 			       const QueryResult &expected,
 			       const QueryResult &actual)=0;
 
@@ -113,8 +114,7 @@ class DispatcherPlugin : public plugin
 
   DispatcherPlugin(const std::string &_name) : name(_name) {}
 
-  virtual void dispatch(QueryEntryPtr query_entry)= 0;
-  virtual bool finish_and_wait(uint64_t thread_id)= 0;
+  virtual void dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries)= 0;
   virtual void finish_all_and_wait()= 0;
 
   virtual void run() {};

@@ -23,6 +23,9 @@
 #include <string>
 #include <vector>
 
+#include <boost/chrono.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/utility/string_ref.hpp>
 #include <tbb/atomic.h>
 
 PERCONA_PLAYBACK_API
@@ -40,34 +43,36 @@ class QueryLogEntry : public QueryEntry
 private:
   uint64_t rows_sent;
   uint64_t rows_examined;
+  boost::chrono::system_clock::time_point start_time;
   double query_time;
-  std::vector<std::string> info;
-  std::string set_timestamp_query;
-  std::string query;
+  boost::string_ref unprocessed_query;
 public:
+  QueryLogEntry(uint64_t _thread_id = 0)
+    : QueryEntry(_thread_id), rows_sent(0), rows_examined(0), query_time(0) {}
 
-  QueryLogEntry() : rows_sent(0), rows_examined(0), query_time(0) {}
-
+  void setTime(boost::chrono::system_clock::time_point time) { start_time = time; }
+  boost::chrono::system_clock::time_point getStartTime() const { return start_time - boost::chrono::microseconds((long)(query_time*(10^6))); }
   double getQueryTime() { return query_time; }
 
-  void add_query_line(const std::string &s);
-  bool parse_metadata(const std::string &s);
+  bool parse_metadata(boost::string_ref s);
 
-  const std::string& getQuery() {return query; };
+  bool hasQuery() const { return !unprocessed_query.empty(); }
+  std::string getQuery(bool remove_timestamp);
+  void setQuery(boost::string_ref s) { unprocessed_query = s; }
 
   void display()
   {
-    std::vector<std::string>::iterator it;
-
-    std::cerr << "    " << query << std::endl;
+    std::cerr << "    " << getQuery(true) << std::endl;
   }
 
   bool is_quit()
   {
-    return (query.compare(0, 30, "# administrator command: Quit;") == 0);
+    return unprocessed_query.starts_with("# administrator command: Quit;");
   }
 
   void execute(DBThread *t);
+
+  bool operator<(const QueryEntry& second) const;
 };
 
 

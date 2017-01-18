@@ -21,7 +21,6 @@
 #include <boost/crc.hpp>
 #include <vector>
 
-#include <tbb/concurrent_hash_map.h>
 #include <stdio.h>
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
@@ -43,46 +42,47 @@ public:
 	  threads_count(0),
 	  options("Threads-pool Options") {}
 
-  virtual void dispatch(QueryEntryPtr query_entry);
-  virtual bool finish_and_wait(uint64_t) { return true; }
+  virtual void dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries);
   virtual void finish_all_and_wait();
-  virtual void run();
 
   boost::program_options::options_description* getProgramOptions();
   int processOptions(boost::program_options::variables_map &vm);
 
 };
 
-void ThreadPoolDispatcher::run()
+void ThreadPoolDispatcher::dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries)
 {
   for (unsigned i = 0; i < threads_count; ++i)
   {
-    boost::shared_ptr<DBThread> db_thread(g_dbclient_plugin->create(i));
+    boost::shared_ptr<DBThread> db_thread(g_dbclient_plugin->create(i, boost::chrono::duration<long int, boost::ratio<1l, 1000000l> >()));
     workers.push_back(db_thread);
-    db_thread->start_thread();
   }
-}
 
-void ThreadPoolDispatcher::dispatch(QueryEntryPtr query_entry)
-{
-  /*
-    Each worker has its own queue. For some types of input plugins
-    it is important to execute query entries with the same thread id
-    by the same worker. That is why we choose worker by simple hash from
-    thread id.
-  */
-  uint64_t thread_id= query_entry->getThreadId();
-  boost::crc_32_type crc;
-  crc.process_bytes(&thread_id, sizeof(thread_id));
-  uint32_t worker_index = crc.checksum() % workers.size();
-  workers[worker_index]->queries->push(query_entry);
+  while (!query_entries->empty()) {
+    QueryEntryPtr entry = query_entries->top();
+    query_entries->pop();
+
+    /*
+      Each worker has its own queue. For some types of input plugins
+      it is important to execute query entries with the same thread id
+      by the same worker. That is why we choose worker by simple hash from
+      thread id.
+    */
+    uint64_t thread_id= entry->getThreadId();
+    boost::crc_32_type crc;
+    crc.process_bytes(&thread_id, sizeof(thread_id));
+    uint32_t worker_index = crc.checksum() % workers.size();
+    workers[worker_index]->queries.push(entry);
+  }
+
+  for (unsigned worker_index = 0; worker_index < threads_count; ++worker_index)
+  {
+    workers[worker_index]->start_thread();
+  }
 }
 
 void ThreadPoolDispatcher::finish_all_and_wait()
 {
-  QueryEntryPtr shutdown_command(new FinishEntry(0));
-  for (Workers::iterator i = workers.begin(), end = workers.end(); i != end; ++i)
-    (*i)->queries->push(shutdown_command);
   for (Workers::iterator i = workers.begin(), end = workers.end(); i != end; ++i)
     (*i)->join();
   workers.clear();

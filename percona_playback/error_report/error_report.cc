@@ -24,14 +24,6 @@
 
 #include <tbb/tbb_stddef.h>
 
-/* We're all conditional here because TBB in CentOS 6 is old */
-#if TBB_VERSION_MAJOR < 3
-#include <boost/unordered_map.hpp>
-#include <tbb/mutex.h>
-#else
-#include <tbb/concurrent_unordered_map.h>
-#endif
-
 #include <tbb/atomic.h>
 #include <percona_playback/plugin.h>
 #include <percona_playback/query_result.h>
@@ -45,18 +37,9 @@ private:
   tbb::atomic<uint64_t> nr_quicker_queries;
   std::string  full_report;
 
-#if TBB_VERSION_MAJOR < 3
-  tbb::mutex connection_query_count_mutex;
-  typedef boost::unordered_map<uint64_t, tbb::atomic<uint64_t> > ConnectionQueryCountMap;
-#else
-  typedef tbb::concurrent_unordered_map<uint64_t, tbb::atomic<uint64_t> > ConnectionQueryCountMap;
-#endif
-
   typedef std::pair<uint64_t, tbb::atomic<uint64_t> > ConnectionQueryCountPair;
   typedef std::map<uint64_t, uint64_t> SortedConnectionQueryCountMap;
   typedef std::pair<uint64_t, uint64_t> SortedConnectionQueryCountPair;
-
-  ConnectionQueryCountMap connection_query_counts;
 
 
 public:
@@ -69,7 +52,7 @@ public:
   }
 
   virtual void query_execution(const uint64_t thread_id,
-			       const std::string &query,
+             boost::string_ref query,
 			       const QueryResult &expected,
 			       const QueryResult &actual)
   {
@@ -86,7 +69,7 @@ public:
 		uint64_t(thread_id),
 		uint64_t(actual.getDuration().total_microseconds()),
                 uint64_t(expected.getDuration().total_microseconds()),
-		query.c_str());
+    query.to_string().c_str());
       }
     }
   }

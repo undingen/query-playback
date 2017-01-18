@@ -22,17 +22,20 @@
 #include <fstream>
 #include <stdint.h>
 #include <assert.h>
+#include <ctime>
 #include <boost/thread.hpp>
 #include "query_log.h"
 #include <unistd.h>
+#include <time.h>
 
-#include <tbb/pipeline.h>
-#include <tbb/tick_count.h>
-#include <tbb/task_scheduler_init.h>
-#include <tbb/tbb_allocator.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/io.h>
+#include <sys/mman.h>
+
 #include <tbb/atomic.h>
-#include <tbb/concurrent_queue.h>
-#include <tbb/concurrent_hash_map.h>
 
 #include <percona_playback/percona_playback.h>
 #include <percona_playback/plugin.h>
@@ -44,89 +47,101 @@
 #include <boost/foreach.hpp>
 #include <boost/program_options.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/regex.hpp>
 
 namespace po= boost::program_options;
 
 static bool g_run_set_timestamp;
 static bool g_preserve_query_time;
+static bool g_preserve_query_starttime;
 
 extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
-class ParseQueryLogFunc: public tbb::filter {
+class ParseQueryLogFunc {
 public:
-  ParseQueryLogFunc(FILE *input_file_,
+  ParseQueryLogFunc(boost::string_ref data_,
 		    unsigned int run_count_,
 		    tbb::atomic<uint64_t> *entries_,
 		    tbb::atomic<uint64_t> *queries_)
-    : tbb::filter(true),
-      nr_entries(entries_),
+    : nr_entries(entries_),
       nr_queries(queries_),
-      input_file(input_file_),
+      data(data_),
       run_count(run_count_),
-      next_line(NULL),
-      next_len(0)
-  {};
+      pos(0)
+  {
+  }
 
-  void* operator() (void*);
+  boost::shared_ptr<QueryEntryPtrVec> getEntries();
+
+private:
+  bool parse_time(boost::string_ref s, boost::chrono::system_clock::time_point& start_time);
+  boost::string_ref readline();
+
 private:
   tbb::atomic<uint64_t> *nr_entries;
   tbb::atomic<uint64_t> *nr_queries;
-  FILE *input_file;
+  boost::string_ref data;
   unsigned int run_count;
-  char *next_line;
-  ssize_t next_len;
+
+  boost::string_ref::size_type pos;
 };
 
-void* dispatch(void *input_);
-
-static inline bool startswith(const char* str, const char* substr) {
-  return strncmp(str, substr, strlen(substr)) == 0;
+boost::string_ref ParseQueryLogFunc::readline() {
+  boost::string_ref::size_type new_pos = data.substr(pos).find('\n');
+  boost::string_ref line = data.substr(pos, new_pos + 1);
+  if (pos != boost::string_ref::npos)
+    pos += new_pos + 1;
+  return line;
 }
 
-void* ParseQueryLogFunc::operator() (void*)  {
-  std::vector<boost::shared_ptr<QueryLogEntry> > *entries=
-    new std::vector<boost::shared_ptr<QueryLogEntry> >();
+bool QueryLogEntry::operator<(const QueryEntry& _second) const {
+  const QueryLogEntry& second = static_cast<const QueryLogEntry&>(_second);
 
-  boost::shared_ptr<QueryLogEntry> tmp_entry(new QueryLogEntry());
- // entries->push_back(tmp_entry);
+  // for same connections we make sure that the follow the order in the query log
+  if (getThreadId() == second.getThreadId())
+    return unprocessed_query.data() < second.unprocessed_query.data();
+  return getStartTime() < second.getStartTime();
+}
 
-  char *line= NULL;
-  size_t buflen = 0;
-  ssize_t len;
+static boost::string_ref trim(boost::string_ref str, boost::string_ref chars) {
+  boost::string_ref::size_type start_pos = str.find_first_not_of(chars);
+  if (start_pos == boost::string_ref::npos)
+    start_pos = 0;
+  return str.substr(start_pos, str.find_last_not_of(chars) + 1 - start_pos);
+}
 
-  if (next_line)
-  {
-    line= next_line;
-    len= next_len;
-    next_line= NULL;
-    next_len= 0;
-  }
-  else if ((len= getline(&line, &buflen, input_file)) == -1)
-  {
-    delete entries;
-    return NULL;
-  }
+boost::shared_ptr<QueryEntryPtrVec> ParseQueryLogFunc::getEntries()  {
+  boost::shared_ptr<QueryEntryPtrVec> entries = boost::shared_ptr<QueryEntryPtrVec>(new QueryEntryPtrVec);
+  boost::shared_ptr<QueryLogEntry> tmp_entry;
 
-  char *p= line;
-  char *q;
-  int count= 0;
+  boost::string_ref line, next_line;
+
+  boost::chrono::system_clock::time_point start_time;
 
   for (;;) {
-    q= line+len;
+    if (next_line.empty()) {
+      line = readline();
+      if (line.empty())
+        break;
+    } else {
+      line = next_line;
+      next_line.clear();
+    }
 
-    if (startswith(p, "# Time"))
-      goto next;
+    if (line.starts_with("# Time")) {
+      parse_time(line, start_time);
+      continue;
+    }
 
-    if ((p[0] != '#' && (q-p) >= (ssize_t)strlen("started with:\n"))
-    && startswith(q- strlen("started with:\n"), "started with:"))
-      goto next;
+    if (line[0] != '#' && line.ends_with("started with:\n"))
+      continue;
 
-    if (p[0] != '#' && startswith(p, "Tcp port: "))
-      goto next;
+    if (line[0] != '#' && line.starts_with("Tcp port: "))
+      continue;
 
     // skip lines like: "Time[ ]+Id[ ]+Command[ ]+Argument"
-    if (p[0] != '#' && startswith(p, "Time"))
-      goto next;
+    if (line[0] != '#' && line.starts_with("Time "))
+      continue;
 
     /*
       # fixme, process admin commands.
@@ -134,74 +149,90 @@ void* ParseQueryLogFunc::operator() (void*)  {
       goto next;
     */
 
-    if (startswith(p, "# User@Host"))
+    if (line.starts_with("# User@Host"))
     {
-      if (!tmp_entry->getQuery().empty())
-        entries->push_back(tmp_entry);
-      count++;
+      if (tmp_entry && tmp_entry->hasQuery()) {
+        entries->push(tmp_entry);
+      }
       tmp_entry.reset(new QueryLogEntry());
+      tmp_entry->setTime(start_time);
       (*this->nr_entries)++;
     }
 
-    if (p[0] == '#')
-      tmp_entry->parse_metadata(std::string(line));
+    if (line[0] == '#')
+      tmp_entry->parse_metadata(line);
     else
     {
       (*nr_queries)++;
-      tmp_entry->add_query_line(std::string(line));
-      do {
-	if ((len= getline(&line, &buflen, input_file)) == -1)
-	{
-	  break;
-	}
 
-	if (line[0] == '#')
-	{
-	  next_line= line;
-	  next_len= len;
-	  break;
-	}
-	tmp_entry->add_query_line(std::string(line));
-      } while(true);
+      // read whole query - can be multiple lines
+      do {
+        next_line = readline();
+      } while (!next_line.empty() && !next_line.starts_with('#'));
+
+      boost::string_ref query(line.data(), next_line.data() - line.data());
+
+      tmp_entry->setQuery(trim(query, " \n\r\t"));
     }
-  next:
-    if (count > 100)
-    {
-      count= 0;
-      //      fseek(input_file,-len, SEEK_CUR);
-      break;
-    }
-    if (!next_line && ((len= getline(&line, &buflen, input_file)) == -1))
-    {
-      break;
-    }
-    next_line= NULL;
-    p= line;
   }
 
-  if (!tmp_entry->getQuery().empty())
-    entries->push_back(tmp_entry);
+  if (tmp_entry && tmp_entry->hasQuery()) {
+    entries->push(tmp_entry);
+  }
 
-  free(line);
+  if (entries->empty())
+    return entries;
+
   return entries;
 }
 
+bool ParseQueryLogFunc::parse_time(boost::string_ref s, boost::chrono::system_clock::time_point& start_time) {
+  // # Time: 090402 9:23:36
+  // # Time: 090402 9:23:36.123456
+
+#if 0
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*", boost::regex_constants::optimize);
+  boost::cmatch results;
+  if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
+      return false;
+
+  int year = std::atol(results.str(1).c_str());
+  year += year < 70 ? 2000 : 1900;
+  boost::gregorian::date date(year, std::atol(results.str(2).c_str()), std::atol(results.str(3).c_str()));
+  boost::posix_time::time_duration td(std::atol(results.str(4).c_str()), std::atol(results.str(5).c_str()), std::atol(results.str(6).c_str()));
+  if (results[7].matched /* microsecs */) {
+    td += boost::posix_time::microseconds(std::atol(results.str(7).c_str()));
+  }
+#endif
+
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*", boost::regex_constants::optimize);
+  boost::cmatch results;
+  if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
+      return false;
+
+  int year = std::atol(results.str(1).c_str());
+  std::tm td;
+  memset(&td, 0, sizeof(td));
+  td.tm_year = year < 70 ? 100 + year : year;
+  td.tm_mon = std::atol(results.str(2).c_str());
+  td.tm_mday = std::atol(results.str(3).c_str());
+  td.tm_hour = std::atol(results.str(4).c_str());
+  td.tm_min = std::atol(results.str(5).c_str());
+  td.tm_sec = std::atol(results.str(6).c_str());
+
+  start_time = boost::chrono::system_clock::from_time_t(std::mktime(&td));
+
+  if (results[7].matched /* microsecs */)
+    start_time += boost::chrono::microseconds(std::atol(results.str(7).c_str()));
+
+  return true;
+}
 
 void QueryLogEntry::execute(DBThread *t)
 {
-  std::vector<std::string>::iterator it;
-  QueryResult r;
+  std::string query = getQuery(!g_run_set_timestamp);
 
-  if(g_run_set_timestamp)
-  {
-    QueryResult expected_result;
-    QueryResult discarded_timestamp_result;
-    expected_result.setRowsSent(0);
-    expected_result.setRowsExamined(0);
-    expected_result.setError(0);
-    t->execute_query(set_timestamp_query, &discarded_timestamp_result,
-		     expected_result);
-  }
+  boost::this_thread::sleep_until(getStartTime() + t->getDiff());
 
   QueryResult expected_result;
   expected_result.setRowsSent(rows_sent);
@@ -215,6 +246,7 @@ void QueryLogEntry::execute(DBThread *t)
   boost::posix_time::ptime start_time;
   start_time= boost::posix_time::microsec_clock::universal_time();
 
+  QueryResult r;
   t->execute_query(query, &r, expected_result);
 
   boost::posix_time::ptime end_time;
@@ -242,36 +274,32 @@ void QueryLogEntry::execute(DBThread *t)
   }
 }
 
-void QueryLogEntry::add_query_line(const std::string &s)
-{
-  const std::string timestamp_query("SET timestamp=");
-  if(!g_run_set_timestamp
-     && s.compare(0, timestamp_query.length(), timestamp_query) == 0)
-    set_timestamp_query= s;
-  else
-  {
-    //Append space insead of \r\n
-    std::string::const_iterator end = s.end() - 1;
-    if (s.length() >= 2 && *(s.end() - 2) == '\r')
-      --end;
-    //Remove initial spaces for best query viewing in reports
-    std::string::const_iterator begin;
-    for (begin = s.begin(); begin != end; ++begin)
-      if (*begin != ' ' && *begin != '\t')
-        break;
-    query.append(begin, end);
-    query.append(" ");
+std::string QueryLogEntry::getQuery(bool remove_timestamp) {
+  static const boost::regex format_r("SET timestamp=[^\n]*\n[ \t]*", boost::regex_constants::optimize);
+  static const boost::regex format("[ ]*\r?\n[ \t]*", boost::regex_constants::optimize);
+
+  std::string ret;
+  ret.reserve(unprocessed_query.size());
+
+  if (remove_timestamp) {
+    std::string tmp;
+    tmp.reserve(unprocessed_query.size());
+    boost::regex_replace(std::back_insert_iterator<std::string>(tmp), unprocessed_query.begin(), unprocessed_query.end(), format_r, "");
+    boost::regex_replace(std::back_insert_iterator<std::string>(ret), tmp.begin(), tmp.end(), format, " ");
+  } else {
+    boost::regex_replace(std::back_insert_iterator<std::string>(ret), unprocessed_query.begin(), unprocessed_query.end(), format, " ");
   }
+  return ret;
 }
 
-bool QueryLogEntry::parse_metadata(const std::string &s)
+bool QueryLogEntry::parse_metadata(boost::string_ref s)
 {
   bool r= false;
   {
     size_t location= s.find("Thread_id: ");
     if (location != std::string::npos)
     {
-      thread_id = strtoull(s.c_str() + location + strlen("Thread_Id: "), NULL, 10);
+      thread_id = strtoull(s.substr(location + strlen("Thread_Id: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -280,7 +308,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Id: ");
     if (location != std::string::npos)
     {
-      thread_id = strtoull(s.c_str() + location + strlen("Id: "), NULL, 10);
+      thread_id = strtoull(s.substr(location + strlen("Id: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -289,7 +317,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Rows_sent: ");
     if (location != std::string::npos)
     {
-      rows_sent = strtoull(s.c_str() + location + strlen("Rows_sent: "), NULL, 10);
+      rows_sent = strtoull(s.substr(location + strlen("Rows_sent: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -298,7 +326,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Rows_Examined: ");
     if (location != std::string::npos)
     {
-      rows_examined = strtoull(s.c_str() + location + strlen("Rows_examined: "), NULL, 10);
+      rows_examined = strtoull(s.substr(location + strlen("Rows_examined: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -308,7 +336,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find(qt_str);
     if (location != std::string::npos)
     {
-      query_time= strtod(s.c_str() + location + qt_str.length(), NULL);
+      query_time = strtod(s.substr(location + qt_str.length()).data(), NULL);
       r= true;
     }
   }
@@ -324,44 +352,21 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
-void* dispatch (void *input_)
+static void LogReaderThread(boost::string_ref data, unsigned int run_count, struct percona_playback_run_result *r)
 {
-    std::vector<boost::shared_ptr<QueryLogEntry> > *input= 
-      static_cast<std::vector<boost::shared_ptr<QueryLogEntry> >*>(input_);
-    for (unsigned int i=0; i< input->size(); i++)
-    {
-      //      usleep(10);
-      g_dispatcher_plugin->dispatch((*input)[i]);
-    }
-    delete input;
-    return NULL;
-}
-
-class DispatchQueriesFunc : public tbb::filter {
-public:
-  DispatchQueriesFunc() : tbb::filter(true) {};
-
-  void* operator() (void *input_)
-  {
-    return dispatch(input_);
-  }
-};
-
-static void LogReaderThread(FILE* input_file, unsigned int run_count, struct percona_playback_run_result *r)
-{
-  tbb::pipeline p;
   tbb::atomic<uint64_t> entries;
   tbb::atomic<uint64_t> queries;
   entries=0;
   queries=0;
 
-  ParseQueryLogFunc f2(input_file, run_count, &entries, &queries);
-  DispatchQueriesFunc f4;
-  p.add_filter(f2);
-  p.add_filter(f4);
-  p.run(2);
+  boost::shared_ptr<QueryEntryPtrVec> entry_vec = ParseQueryLogFunc(data, run_count, &entries, &queries).getEntries();
 
+  if (!entry_vec->empty()) {
+    g_dispatcher_plugin->dispatch(entry_vec);
+
+  }
   g_dispatcher_plugin->finish_all_and_wait();
+
 
   r->n_log_entries= entries;
   r->n_queries= queries;
@@ -409,6 +414,11 @@ public:
           zero_tokens(),
        _("Ensure that each query takes at least Query_time (from slow query "
 	 "log) to execute."))
+      ("query-log-preserve-query-startime",
+       po::value<bool>(&g_preserve_query_starttime)->
+        default_value(false)->
+          zero_tokens(),
+       _("Ensure that each query executes at the exact time."))
       ;
 
     return &options;
@@ -454,33 +464,54 @@ public:
     return 0;
   }
 
-  virtual void run(percona_playback_run_result  &result)
+  virtual void run(percona_playback_run_result &result)
   {
-    FILE* input_file;
-
     if (std_in)
     {
-      input_file = stdin;
+      // todo maybe we want to create a temp file in to safe RAM...
+      const int block_size = 1024;
+      std::string data;
+      while (true) {
+        std::string::size_type old_size = data.size();
+        data.resize(old_size + block_size);
+        int num_read = fread(&data[old_size], 1, block_size, stdin);
+        if (num_read < block_size) {
+          data.resize(old_size + num_read);
+          break;
+        }
+      }
+      boost::thread log_reader_thread(LogReaderThread,
+                                      data,
+                                      read_count,
+                                      &result);
+
+      log_reader_thread.join();
     }
     else
     {
-      input_file = fopen(file_name.c_str(),"r");
-      if (input_file == NULL)
-      {
+      struct stat s;
+      int fd = open(file_name.c_str(), O_RDONLY);
+      if (fd == -1 || fstat(fd, &s) == -1) {
         fprintf(stderr,
-		_("ERROR: Error opening file '%s': %s"),
-		file_name.c_str(), strerror(errno));
-	return;
+          _("ERROR: Error opening file '%s': %s"),
+          file_name.c_str(), strerror(errno));
+        return;
       }
+      boost::string_ref data;
+      int size = s.st_size;
+      void* ptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+      madvise(ptr, size, MADV_WILLNEED);
+      data = boost::string_ref((const char*)ptr, size);
+
+      boost::thread log_reader_thread(LogReaderThread,
+                                      data,
+                                      read_count,
+                                      &result);
+
+      log_reader_thread.join();
+      munmap(const_cast<char*>(data.data()), data.size());
+      close(fd);
     }
-
-    boost::thread log_reader_thread(LogReaderThread,
-				    input_file,
-				    read_count,
-				    &result);
-
-    log_reader_thread.join();
-    fclose(input_file);
   }
 };
 

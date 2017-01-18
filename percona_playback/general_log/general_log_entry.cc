@@ -52,16 +52,23 @@ void GeneralLogEntry::execute(DBThread *t)
 
 void GeneralLogEntry::add_query_line(const std::string &s)
 {
-    boost::regex re("\\s+(\\d+)\\s+Query\\s+(.+)");
-    boost::smatch fields;    //std::cout << "LINE [" << s << "]" << std::endl;
+    static const boost::regex re("\\s+(\\d+)\\s+Query\\s+(.+)");
+    boost::smatch fields;
+
+    //std::cout << "LINE [" << s << "]" << std::endl;
 
     if (boost::regex_search(s, fields, re))
     {
         //0 whole string
         //1 Thread id
-        //2 query        std::string ns = fields[2].str();        std::string::const_iterator begin = ns.begin();        std::string::const_iterator end = ns.end() - 1;
+        //2 query
+        std::string ns = fields[2].str();
+        std::string::const_iterator begin = ns.begin();
+        std::string::const_iterator end = ns.end() - 1;
         if (ns.length() >= 2 && *(ns.end() - 2) == '\r')
-            --end;        //std::cout << "MATCHING THREADID [" << fields[1] << "] QUERY [" << fields[2] << "]" << std::endl;
+            --end;
+
+        //std::cout << "MATCHING THREADID [" << fields[1] << "] QUERY [" << fields[2] << "]" << std::endl;
         thread_id = strtoull(fields[1].str().c_str(), NULL, 10);
         query.append(begin, end);
         query.append(" ");

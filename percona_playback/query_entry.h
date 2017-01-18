@@ -17,7 +17,10 @@
 #define PERCONA_PLAYBACK_QUERY_ENTRY_H
 
 #include <boost/shared_ptr.hpp>
+#include <boost/chrono.hpp>
 #include <stdint.h>
+#include <vector>
+#include <queue>
 
 class DBThread;
 
@@ -25,32 +28,22 @@ class QueryEntry
 {
 protected:
   uint64_t thread_id;
-  bool shutdown;
+  uint64_t id;
 public:
-  QueryEntry() : thread_id(0), shutdown(false) {};
-  QueryEntry(uint64_t _thread_id, bool _shutdown) :
-    thread_id(_thread_id), shutdown(_shutdown) {}
+  QueryEntry(uint64_t _thread_id = 0) :
+    thread_id(_thread_id), id(0) {}
   virtual ~QueryEntry() {}
 
-  void set_shutdown() { shutdown= true; }
-  bool is_shutdown() const { return shutdown; }
   virtual bool is_quit()= 0;
 
   uint64_t getThreadId() const { return thread_id; }
 
   virtual void execute(DBThread *t)= 0;
+  virtual boost::chrono::system_clock::time_point getStartTime() const { return boost::chrono::system_clock::time_point(); }
 
-};
-
-class FinishEntry : public QueryEntry
-{
-public:
-  FinishEntry(uint64_t _thread_id) :
-    QueryEntry (_thread_id, true) {}
-  bool is_quit() { return false; }
-
-  void execute(DBThread *) {}
+  virtual bool operator <(const QueryEntry& e) const { return getStartTime() < e.getStartTime(); }
 };
 
 typedef boost::shared_ptr<QueryEntry> QueryEntryPtr;
+typedef std::priority_queue<QueryEntryPtr, std::vector<QueryEntryPtr> > QueryEntryPtrVec;
 #endif /* PERCONA_PLAYBACK_QUERY_ENTRY_H */

@@ -17,11 +17,11 @@
 #define PERCONA_PLAYBACK_DB_THREAD_H
 
 #include <memory>
+#include <queue>
 #include "percona_playback/visibility.h"
 #include <boost/thread.hpp>
 #include <boost/shared_ptr.hpp>
-#include <tbb/concurrent_queue.h>
-#include <tbb/concurrent_hash_map.h>
+#include <boost/utility/string_ref.hpp>
 
 #include "percona_playback/query_entry.h"
 
@@ -40,15 +40,14 @@ class DBThread
 private:
   boost::thread thread;
   uint64_t thread_id;
+  boost::chrono::duration<int64_t, boost::micro> diff;
 
 public:
-  typedef tbb::concurrent_bounded_queue<QueryEntryPtr> Queries;
-  boost::shared_ptr<Queries> queries;
+  typedef std::queue<QueryEntryPtr> Queries;
+  Queries queries;
 
-  DBThread(uint64_t _thread_id,
-	   boost::shared_ptr<Queries> _queries) :
-	  thread_id(_thread_id), queries(_queries)  {
-    queries->set_capacity(g_db_thread_queue_depth);
+  DBThread(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff)
+    : thread_id(_thread_id), diff(diff) {
   }
 
   virtual ~DBThread() {}
@@ -68,11 +67,13 @@ public:
     return false;
   }
 
+  boost::chrono::duration<int64_t, boost::micro> getDiff() { return diff; }
+
   void    init_session();
   virtual bool connect()= 0;
 
   virtual void disconnect()= 0;
-  virtual void execute_query(const std::string &query,
+  virtual void execute_query(boost::string_ref query,
 			     QueryResult *r,
 			     const QueryResult &expected_result)= 0;
 
