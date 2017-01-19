@@ -75,7 +75,6 @@ public:
       run_count(run_count_),
       pos(0)
   {
-      std::cout << "ffoooo " << sizeof(QueryEntry) << std::endl;
   };
 
   void* operator() (void*);
@@ -102,7 +101,7 @@ boost::string_ref ParseQueryLogFunc::readline() {
   boost::string_ref::size_type new_pos = data.substr(pos).find('\n');
   boost::string_ref line = data.substr(pos, new_pos + 1);
   if (pos != boost::string_ref::npos)
-    pos += new_pos+1;
+    pos += new_pos + 1;
   return line;
 }
 
