@@ -98,10 +98,6 @@ private:
 
 void* dispatch(void *input_);
 
-static inline bool startswith(const char* str, const char* substr) {
-  return strncmp(str, substr, strlen(substr)) == 0;
-}
-
 boost::string_ref ParseQueryLogFunc::readline() {
   boost::string_ref::size_type new_pos = data.substr(pos).find('\n');
   boost::string_ref line = data.substr(pos, new_pos + 1);
