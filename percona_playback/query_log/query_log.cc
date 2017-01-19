@@ -27,6 +27,13 @@
 #include "query_log.h"
 #include <unistd.h>
 
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/io.h>
+#include <sys/mman.h>
+
 #include <tbb/pipeline.h>
 #include <tbb/tick_count.h>
 #include <tbb/task_scheduler_init.h>
@@ -46,6 +53,7 @@
 #include <boost/program_options.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/regex.hpp>
+#include <boost/utility/string_ref.hpp>
 
 namespace po= boost::program_options;
 
@@ -56,41 +64,50 @@ extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
 class ParseQueryLogFunc: public tbb::filter {
 public:
-  ParseQueryLogFunc(FILE *input_file_,
+  ParseQueryLogFunc(boost::string_ref data_,
 		    unsigned int run_count_,
 		    tbb::atomic<uint64_t> *entries_,
 		    tbb::atomic<uint64_t> *queries_)
     : tbb::filter(true),
       nr_entries(entries_),
       nr_queries(queries_),
-      input_file(input_file_),
+      data(data_),
       run_count(run_count_),
-      next_line(NULL),
-      next_len(0)
-  {};
+      pos(0)
+  {
+      std::cout << "ffoooo " << sizeof(QueryEntry) << std::endl;
+  };
 
   void* operator() (void*);
 
 private:
   bool parse_time(const std::string& s);
+  boost::string_ref readline();
 
 private:
   tbb::atomic<uint64_t> *nr_entries;
   tbb::atomic<uint64_t> *nr_queries;
-  FILE *input_file;
+  boost::string_ref data;
   unsigned int run_count;
-  char *next_line;
-  ssize_t next_len;
-
+  boost::string_ref next_line;
+  boost::posix_time::ptime first_query_time;
 
   boost::posix_time::ptime start_time;
-
+  boost::string_ref::size_type pos;
 };
 
 void* dispatch(void *input_);
 
 static inline bool startswith(const char* str, const char* substr) {
   return strncmp(str, substr, strlen(substr)) == 0;
+}
+
+boost::string_ref ParseQueryLogFunc::readline() {
+  boost::string_ref::size_type new_pos = data.substr(pos).find('\n');
+  boost::string_ref line = data.substr(pos, new_pos + 1);
+  if (pos != boost::string_ref::npos)
+    pos += new_pos+1;
+  return line;
 }
 
 void* ParseQueryLogFunc::operator() (void*)  {
@@ -100,43 +117,38 @@ void* ParseQueryLogFunc::operator() (void*)  {
   boost::shared_ptr<QueryLogEntry> tmp_entry(new QueryLogEntry());
  // entries->push_back(tmp_entry);
 
-  char *line= NULL;
-  size_t buflen = 0;
-  ssize_t len;
+  boost::string_ref line;
 
-  if (next_line)
+  if (!next_line.empty())
   {
     line= next_line;
-    len= next_len;
-    next_line= NULL;
-    next_len= 0;
+    next_line.clear();
   }
-  else if ((len= getline(&line, &buflen, input_file)) == -1)
+  else
   {
-    delete entries;
-    return NULL;
+    line = readline();
+    if (line.empty()) {
+      delete entries;
+      return NULL;
+    }
   }
 
-  char *p= line;
-  char *q;
+
   int count= 0;
 
   for (;;) {
-    q= line+len;
-
-    if (startswith(p, "# Time")) {
-      parse_time(p);
+    if (line.starts_with("# Time")) {
+      parse_time(line.to_string());
       goto next;
     }
 
-    if ((p[0] != '#' && (q-p) >= (ssize_t)strlen("started with:\n"))
-    && startswith(q- strlen("started with:\n"), "started with:"))
+    if (line[0] != '#' && line.ends_with("started with:\n"))
       goto next;
 
-    if (p[0] != '#' && startswith(p, "Tcp port: "))
+    if (line[0] != '#' && line.starts_with("Tcp port: "))
       goto next;
 
-    if (p[0] != '#' && startswith(p, "Time Id Command Argument"))
+    if (line[0] != '#' && line.starts_with("Time Id Command Argument"))
       goto next;
 
     /*
@@ -145,7 +157,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
       goto next;
     */
 
-    if (startswith(p, "# User@Host"))
+    if (line.starts_with("# User@Host"))
     {
       if (!tmp_entry->getQuery().empty())
         entries->push_back(tmp_entry);
@@ -155,25 +167,25 @@ void* ParseQueryLogFunc::operator() (void*)  {
       (*this->nr_entries)++;
     }
 
-    if (p[0] == '#')
-      tmp_entry->parse_metadata(std::string(line));
+    if (line[0] == '#')
+      tmp_entry->parse_metadata(line.to_string());
     else
     {
       (*nr_queries)++;
-      tmp_entry->add_query_line(std::string(line));
+      tmp_entry->add_query_line(line.to_string());
       do {
-	if ((len= getline(&line, &buflen, input_file)) == -1)
-	{
-	  break;
-	}
+        line = readline();
+        if (line.empty())
+        {
+          break;
+        }
 
-	if (line[0] == '#')
-	{
-	  next_line= line;
-	  next_len= len;
-	  break;
-	}
-	tmp_entry->add_query_line(std::string(line));
+        if (line[0] == '#')
+        {
+          next_line= line;
+          break;
+        }
+        tmp_entry->add_query_line(line.to_string());
       } while(true);
     }
   next:
@@ -183,25 +195,25 @@ void* ParseQueryLogFunc::operator() (void*)  {
       //      fseek(input_file,-len, SEEK_CUR);
       break;
     }
-    if (!next_line && ((len= getline(&line, &buflen, input_file)) == -1))
+    if (next_line.empty())
     {
-      break;
+      line = readline();
+      if (line.empty())
+        break;
     }
-    next_line= NULL;
-    p= line;
+    next_line.clear();
   }
 
   if (!tmp_entry->getQuery().empty())
     entries->push_back(tmp_entry);
 
-  free(line);
   return entries;
 }
 
 bool ParseQueryLogFunc::parse_time(const std::string& s) {
   // # Time: 090402 9:23:36
   // # Time: 090402 9:23:36.123456
-  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\n");
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*");
   boost::smatch results;
   if (!boost::regex_match(s, results, time_regex))
       return false;
@@ -214,7 +226,12 @@ bool ParseQueryLogFunc::parse_time(const std::string& s) {
     td += boost::posix_time::microseconds(std::atol(results.str(7).c_str()));
   }
   start_time = boost::posix_time::ptime(date, td);
-  std::cout << start_time << std::endl;
+
+  // retrieve the time of the first query
+  if (first_query_time.is_not_a_date_time() || start_time < first_query_time)
+      first_query_time = start_time;
+
+  std::cout << start_time << " " << first_query_time << std::endl;
   return true;
 }
 
@@ -378,7 +395,7 @@ public:
   }
 };
 
-static void LogReaderThread(FILE* input_file, unsigned int run_count, struct percona_playback_run_result *r)
+static void LogReaderThread(boost::string_ref data, unsigned int run_count, struct percona_playback_run_result *r)
 {
   tbb::pipeline p;
   tbb::atomic<uint64_t> entries;
@@ -386,7 +403,7 @@ static void LogReaderThread(FILE* input_file, unsigned int run_count, struct per
   entries=0;
   queries=0;
 
-  ParseQueryLogFunc f2(input_file, run_count, &entries, &queries);
+  ParseQueryLogFunc f2(data, run_count, &entries, &queries);
   DispatchQueriesFunc f4;
   p.add_filter(f2);
   p.add_filter(f4);
@@ -487,31 +504,36 @@ public:
 
   virtual void run(percona_playback_run_result  &result)
   {
-    FILE* input_file;
-
+    int fd = -1;
+    boost::string_ref data;
     if (std_in)
     {
-      input_file = stdin;
+      assert(0);
     }
     else
     {
-      input_file = fopen(file_name.c_str(),"r");
-      if (input_file == NULL)
-      {
+      struct stat s;
+      fd = open(file_name.c_str(), O_RDONLY);
+      if (fd == -1 || fstat(fd, &s) == -1) {
         fprintf(stderr,
-		_("ERROR: Error opening file '%s': %s"),
-		file_name.c_str(), strerror(errno));
-	return;
+          _("ERROR: Error opening file '%s': %s"),
+          file_name.c_str(), strerror(errno));
+        return;
       }
+      int size = s.st_size;
+      const char* ptr = (const char *)mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+      data = boost::string_ref(ptr, size);
     }
 
     boost::thread log_reader_thread(LogReaderThread,
-				    input_file,
+            data,
 				    read_count,
 				    &result);
 
     log_reader_thread.join();
-    fclose(input_file);
+    munmap(const_cast<char*>(data.data()), data.size());
+    if (fd != -1)
+      close(fd);
   }
 };
 

@@ -43,7 +43,7 @@ private:
   uint64_t rows_examined;
   boost::posix_time::ptime start_time;
   double query_time;
-  std::vector<std::string> info;
+  //std::vector<std::string> info;
   std::string set_timestamp_query;
   std::string query;
 public:
