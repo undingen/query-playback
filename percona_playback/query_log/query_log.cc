@@ -53,7 +53,6 @@
 #include <boost/program_options.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/regex.hpp>
-#include <boost/utility/string_ref.hpp>
 
 namespace po= boost::program_options;
 
@@ -307,14 +306,14 @@ void QueryLogEntry::add_query_line(const std::string &s)
   }
 }
 
-bool QueryLogEntry::parse_metadata(const std::string &s)
+bool QueryLogEntry::parse_metadata(boost::string_ref s)
 {
   bool r= false;
   {
     size_t location= s.find("Thread_id: ");
     if (location != std::string::npos)
     {
-      thread_id = strtoull(s.c_str() + location + strlen("Thread_Id: "), NULL, 10);
+      thread_id = strtoull(s.substr(location + strlen("Thread_Id: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -323,7 +322,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Id: ");
     if (location != std::string::npos)
     {
-      thread_id = strtoull(s.c_str() + location + strlen("Id: "), NULL, 10);
+      thread_id = strtoull(s.substr(location + strlen("Id: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -332,7 +331,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Rows_sent: ");
     if (location != std::string::npos)
     {
-      rows_sent = strtoull(s.c_str() + location + strlen("Rows_sent: "), NULL, 10);
+      rows_sent = strtoull(s.substr(location + strlen("Rows_sent: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -341,7 +340,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find("Rows_Examined: ");
     if (location != std::string::npos)
     {
-      rows_examined = strtoull(s.c_str() + location + strlen("Rows_examined: "), NULL, 10);
+      rows_examined = strtoull(s.substr(location + strlen("Rows_examined: ")).data(), NULL, 10);
       r= true;
     }
   }
@@ -351,7 +350,7 @@ bool QueryLogEntry::parse_metadata(const std::string &s)
     size_t location= s.find(qt_str);
     if (location != std::string::npos)
     {
-      query_time= strtod(s.c_str() + location + qt_str.length(), NULL);
+      query_time= strtod(s.substr(location + qt_str.length()).data(), NULL);
       r= true;
     }
   }

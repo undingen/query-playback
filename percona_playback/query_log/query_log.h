@@ -24,6 +24,7 @@
 #include <vector>
 
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/utility/string_ref.hpp>
 #include <tbb/atomic.h>
 
 PERCONA_PLAYBACK_API
@@ -54,7 +55,7 @@ public:
   double getQueryTime() { return query_time; }
 
   void add_query_line(const std::string &s);
-  bool parse_metadata(const std::string &s);
+  bool parse_metadata(boost::string_ref s);
 
   const std::string& getQuery() {return query; };
 
