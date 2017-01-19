@@ -80,7 +80,7 @@ public:
   void* operator() (void*);
 
 private:
-  bool parse_time(const std::string& s);
+  bool parse_time(boost::string_ref s);
   boost::string_ref readline();
 
 private:
@@ -133,7 +133,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
 
   for (;;) {
     if (line.starts_with("# Time")) {
-      parse_time(line.to_string());
+      parse_time(line);
       goto next;
     }
 
@@ -205,12 +205,12 @@ void* ParseQueryLogFunc::operator() (void*)  {
   return entries;
 }
 
-bool ParseQueryLogFunc::parse_time(const std::string& s) {
+bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
   // # Time: 090402 9:23:36
   // # Time: 090402 9:23:36.123456
   static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*");
-  boost::smatch results;
-  if (!boost::regex_match(s, results, time_regex))
+  boost::cmatch results;
+  if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
       return false;
 
   int year = std::atol(results.str(1).c_str());
