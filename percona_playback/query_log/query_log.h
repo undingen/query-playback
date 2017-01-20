@@ -50,6 +50,7 @@ public:
   QueryLogEntry() : rows_sent(0), rows_examined(0), query_time(0) {}
 
   void setTime(boost::posix_time::ptime time) { start_time = time; }
+  boost::posix_time::ptime getStartTime() const { return start_time - boost::posix_time::microseconds(query_time*(10^6)); }
   double getQueryTime() { return query_time; }
 
   bool parse_metadata(boost::string_ref s);

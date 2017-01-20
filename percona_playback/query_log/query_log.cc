@@ -103,6 +103,10 @@ boost::string_ref ParseQueryLogFunc::readline() {
   return line;
 }
 
+static bool compare_by_time(const boost::shared_ptr<QueryLogEntry>& first, const boost::shared_ptr<QueryLogEntry>& second) {
+    return first->getStartTime() < second->getStartTime();
+}
+
 void* ParseQueryLogFunc::operator() (void*)  {
   std::vector<boost::shared_ptr<QueryLogEntry> > *entries = NULL;
   boost::shared_ptr<QueryLogEntry> tmp_entry;
@@ -174,6 +178,10 @@ void* ParseQueryLogFunc::operator() (void*)  {
     entries->push_back(tmp_entry);
   }
 
+
+  if (entries)
+    std::stable_sort(entries->begin(), entries->end(), compare_by_time);
+
   return entries;
 }
 
@@ -204,7 +212,6 @@ bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
 
 void QueryLogEntry::execute(DBThread *t)
 {
-  std::vector<std::string>::iterator it;
   QueryResult r;
 
   std::string query = getQuery(!g_run_set_timestamp);
