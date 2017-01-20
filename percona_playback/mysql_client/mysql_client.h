@@ -13,6 +13,7 @@
  * with this program.  If not, see <http://www.gnu.org/licenses/>.
  * END LICENSE */
 
+#include <boost/utility/string_ref.hpp>
 #include <percona_playback/db_thread.h>
 #include <mysql.h>
 
@@ -36,7 +37,7 @@ class MySQLDBThread : public DBThread
 
   bool connect();
   void disconnect();
-  void execute_query(const std::string &query, QueryResult *r,
+  void execute_query(boost::string_ref query, QueryResult *r,
 		     const QueryResult &expected_result);
   void run();
 };

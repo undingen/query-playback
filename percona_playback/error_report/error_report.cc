@@ -69,7 +69,7 @@ public:
   }
 
   virtual void query_execution(const uint64_t thread_id,
-			       const std::string &query,
+             boost::string_ref query,
 			       const QueryResult &expected,
 			       const QueryResult &actual)
   {
@@ -86,7 +86,7 @@ public:
 		uint64_t(thread_id),
 		uint64_t(actual.getDuration().total_microseconds()),
                 uint64_t(expected.getDuration().total_microseconds()),
-		query.c_str());
+    query.to_string().c_str());
       }
     }
   }

@@ -20,6 +20,7 @@
 #include "percona_playback/visibility.h"
 #include <boost/thread.hpp>
 #include <boost/shared_ptr.hpp>
+#include <boost/utility/string_ref.hpp>
 #include <tbb/concurrent_queue.h>
 #include <tbb/concurrent_hash_map.h>
 
@@ -72,7 +73,7 @@ public:
   virtual bool connect()= 0;
 
   virtual void disconnect()= 0;
-  virtual void execute_query(const std::string &query,
+  virtual void execute_query(boost::string_ref query,
 			     QueryResult *r,
 			     const QueryResult &expected_result)= 0;
 

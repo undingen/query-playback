@@ -114,13 +114,13 @@ public:
 
 
   virtual void query_execution(const uint64_t thread_id,
-			       const std::string &query,
+             boost::string_ref query,
 			       const QueryResult &expected,
 			       const QueryResult &actual)
   {
     if (actual.getError())
     {
-      fprintf(stderr,_("Error query: %s\n"), query.c_str());
+      fprintf(stderr,_("Error query: %s\n"), query.to_string().c_str());
       nr_error_queries++;
     }
 
@@ -141,7 +141,7 @@ public:
     if (!ignore_row_result_diffs && actual.getRowsSent() != expected.getRowsSent())
     {
       nr_queries_rows_differ++;
-      fprintf(stderr, _("Connection %"PRIu64" Rows Sent: %"PRIu64 " != expected %"PRIu64 " for query: %s\n"), thread_id, actual.getRowsSent(), expected.getRowsSent(), query.c_str());
+      fprintf(stderr, _("Connection %"PRIu64" Rows Sent: %"PRIu64 " != expected %"PRIu64 " for query: %s\n"), thread_id, actual.getRowsSent(), expected.getRowsSent(), query.to_string().c_str());
     }
 
     nr_queries_executed++;

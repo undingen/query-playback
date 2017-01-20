@@ -153,7 +153,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
 
     if (line.starts_with("# User@Host"))
     {
-      if (!tmp_entry->getQuery().empty())
+      if (tmp_entry->hasQuery())
         entries->push_back(tmp_entry);
       count++;
       tmp_entry.reset(new QueryLogEntry());
@@ -162,11 +162,11 @@ void* ParseQueryLogFunc::operator() (void*)  {
     }
 
     if (line[0] == '#')
-      tmp_entry->parse_metadata(line.to_string());
+      tmp_entry->parse_metadata(line);
     else
     {
       (*nr_queries)++;
-      tmp_entry->add_query_line(line.to_string());
+      tmp_entry->add_query_line(line);
       do {
         line = readline();
         if (line.empty())
@@ -179,7 +179,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
           next_line= line;
           break;
         }
-        tmp_entry->add_query_line(line.to_string());
+        tmp_entry->add_query_line(line);
       } while(true);
     }
   next:
@@ -198,7 +198,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
     next_line.clear();
   }
 
-  if (!tmp_entry->getQuery().empty())
+  if (tmp_entry->hasQuery())
     entries->push_back(tmp_entry);
 
   return entries;
@@ -207,7 +207,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
 bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
   // # Time: 090402 9:23:36
   // # Time: 090402 9:23:36.123456
-  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*");
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*", boost::regex_constants::optimize);
   boost::cmatch results;
   if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
       return false;
@@ -234,16 +234,7 @@ void QueryLogEntry::execute(DBThread *t)
   std::vector<std::string>::iterator it;
   QueryResult r;
 
-  if(g_run_set_timestamp)
-  {
-    QueryResult expected_result;
-    QueryResult discarded_timestamp_result;
-    expected_result.setRowsSent(0);
-    expected_result.setRowsExamined(0);
-    expected_result.setError(0);
-    t->execute_query(set_timestamp_query, &discarded_timestamp_result,
-		     expected_result);
-  }
+  std::string query = getQuery(!g_run_set_timestamp);
 
   QueryResult expected_result;
   expected_result.setRowsSent(rows_sent);
@@ -284,25 +275,27 @@ void QueryLogEntry::execute(DBThread *t)
   }
 }
 
-void QueryLogEntry::add_query_line(const std::string &s)
+std::string QueryLogEntry::getQuery(bool remove_timestamp) {
+  static const boost::regex format("[ ]*\r?\n[ \t]*", boost::regex_constants::optimize);
+  static const boost::regex format_r("[ ]*\r?\n[ \t]*|SET timestamp=[^\n]*\n[ \t]*", boost::regex_constants::optimize);
+  std::string ret;
+  ret.reserve(unprocessed_query.size());
+  boost::regex_replace(std::back_insert_iterator<std::string>(ret), unprocessed_query.begin(), unprocessed_query.end(), remove_timestamp ? format_r:  format, " ");
+  return ret;
+  /*
+  //Remove initial spaces for best query viewing in reports
+  while (unprocessed_query.starts_with(' ') || unprocessed_query.starts_with('\t'))
+    s.remove_prefix(1);
+    */
+}
+
+void QueryLogEntry::add_query_line(boost::string_ref s)
 {
-  const std::string timestamp_query("SET timestamp=");
-  if(!g_run_set_timestamp
-     && s.compare(0, timestamp_query.length(), timestamp_query) == 0)
-    set_timestamp_query= s;
-  else
-  {
-    //Append space insead of \r\n
-    std::string::const_iterator end = s.end() - 1;
-    if (s.length() >= 2 && *(s.end() - 2) == '\r')
-      --end;
-    //Remove initial spaces for best query viewing in reports
-    std::string::const_iterator begin;
-    for (begin = s.begin(); begin != end; ++begin)
-      if (*begin != ' ' && *begin != '\t')
-        break;
-    query.append(begin, end);
-    query.append(" ");
+  if (unprocessed_query.empty()) {
+    unprocessed_query = s;
+  } else {
+    assert(s.data() == &unprocessed_query.back()+1);
+    unprocessed_query = boost::string_ref(unprocessed_query.data(), unprocessed_query.size() + s.size());
   }
 }
 
@@ -350,7 +343,7 @@ bool QueryLogEntry::parse_metadata(boost::string_ref s)
     size_t location= s.find(qt_str);
     if (location != std::string::npos)
     {
-      query_time= strtod(s.substr(location + qt_str.length()).data(), NULL);
+      query_time = strtod(s.substr(location + qt_str.length()).data(), NULL);
       r= true;
     }
   }
@@ -496,7 +489,7 @@ public:
     return 0;
   }
 
-  virtual void run(percona_playback_run_result  &result)
+  virtual void run(percona_playback_run_result &result)
   {
     int fd = -1;
     boost::string_ref data;

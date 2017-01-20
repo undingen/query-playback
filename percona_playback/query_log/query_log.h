@@ -44,9 +44,7 @@ private:
   uint64_t rows_examined;
   boost::posix_time::ptime start_time;
   double query_time;
-  //std::vector<std::string> info;
-  std::string set_timestamp_query;
-  std::string query;
+  boost::string_ref unprocessed_query;
 public:
 
   QueryLogEntry() : rows_sent(0), rows_examined(0), query_time(0) {}
@@ -54,21 +52,20 @@ public:
   void setTime(boost::posix_time::ptime time) { start_time = time; }
   double getQueryTime() { return query_time; }
 
-  void add_query_line(const std::string &s);
+  void add_query_line(boost::string_ref s);
   bool parse_metadata(boost::string_ref s);
 
-  const std::string& getQuery() {return query; };
+  bool hasQuery() const { return !unprocessed_query.empty(); }
+  std::string getQuery(bool remove_timestamp);
 
   void display()
   {
-    std::vector<std::string>::iterator it;
-
-    std::cerr << "    " << query << std::endl;
+    std::cerr << "    " << getQuery(true) << std::endl;
   }
 
   bool is_quit()
   {
-    return (query.compare(0, 30, "# administrator command: Quit;") == 0);
+    return unprocessed_query.starts_with("# administrator command: Quit;");
   }
 
   void execute(DBThread *t);

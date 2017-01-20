@@ -26,7 +26,7 @@ class NULLDBThread : public DBThread
 
   bool connect() { return true; };
   void disconnect() {};
-  void execute_query(const std::string &, QueryResult *r,
+  void execute_query(boost::string_ref, QueryResult *r,
 		     const QueryResult &expected_result) {
     *r= expected_result;
   };

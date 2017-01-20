@@ -103,7 +103,7 @@ public:
 
 
   virtual void query_execution(const uint64_t thread_id,
-			       const std::string &query,
+             boost::string_ref query,
 			       const QueryResult &expected,
 			       const QueryResult &actual)
   {
@@ -130,7 +130,9 @@ public:
       }
     }
 
-    std::string new_query = boost::to_upper_copy(query);
+    std::string new_query;
+    new_query.reserve(query.size());
+    boost::to_upper_copy(std::back_insert_iterator<std::string>(new_query), query);
 
     if (new_query.find("SELECT ") != std::string::npos)
     {
