@@ -87,7 +87,6 @@ private:
   tbb::atomic<uint64_t> *nr_queries;
   boost::string_ref data;
   unsigned int run_count;
-  boost::string_ref next_line;
   boost::posix_time::ptime first_query_time;
 
   boost::posix_time::ptime start_time;
@@ -105,45 +104,35 @@ boost::string_ref ParseQueryLogFunc::readline() {
 }
 
 void* ParseQueryLogFunc::operator() (void*)  {
-  std::vector<boost::shared_ptr<QueryLogEntry> > *entries=
-    new std::vector<boost::shared_ptr<QueryLogEntry> >();
+  std::vector<boost::shared_ptr<QueryLogEntry> > *entries = NULL;
+  boost::shared_ptr<QueryLogEntry> tmp_entry;
 
-  boost::shared_ptr<QueryLogEntry> tmp_entry(new QueryLogEntry());
- // entries->push_back(tmp_entry);
-
-  boost::string_ref line;
-
-  if (!next_line.empty())
-  {
-    line= next_line;
-    next_line.clear();
-  }
-  else
-  {
-    line = readline();
-    if (line.empty()) {
-      delete entries;
-      return NULL;
-    }
-  }
-
-
-  int count= 0;
+  boost::string_ref line, next_line;
 
   for (;;) {
+    if (next_line.empty()) {
+      line = readline();
+      if (line.empty())
+        break;
+    } else {
+      line = next_line;
+      next_line.clear();
+    }
+
     if (line.starts_with("# Time")) {
-      parse_time(line);
-      goto next;
+      //parse_time(line);
+      continue;
     }
 
     if (line[0] != '#' && line.ends_with("started with:\n"))
-      goto next;
+      continue;
 
     if (line[0] != '#' && line.starts_with("Tcp port: "))
-      goto next;
+      continue;
 
-    if (line[0] != '#' && line.starts_with("Time Id Command Argument"))
-      goto next;
+    //if (line[0] != '#' && line.starts_with("Time Id Command Argument"))
+    if (line[0] != '#' && line.starts_with("Time "))
+      continue;
 
     /*
       # fixme, process admin commands.
@@ -153,9 +142,11 @@ void* ParseQueryLogFunc::operator() (void*)  {
 
     if (line.starts_with("# User@Host"))
     {
-      if (tmp_entry->hasQuery())
+      if (tmp_entry && tmp_entry->hasQuery()) {
+        if (!entries)
+          entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
         entries->push_back(tmp_entry);
-      count++;
+      }
       tmp_entry.reset(new QueryLogEntry());
       tmp_entry->setTime(start_time);
       (*this->nr_entries)++;
@@ -166,40 +157,22 @@ void* ParseQueryLogFunc::operator() (void*)  {
     else
     {
       (*nr_queries)++;
-      tmp_entry->add_query_line(line);
-      do {
-        line = readline();
-        if (line.empty())
-        {
-          break;
-        }
 
-        if (line[0] == '#')
-        {
-          next_line= line;
-          break;
-        }
-        tmp_entry->add_query_line(line);
-      } while(true);
+      // read whole query - can be multiple lines
+      do {
+        next_line = readline();
+      } while (!next_line.empty() && !next_line.starts_with('#'));
+
+      boost::string_ref query(line.data(), next_line.data() - line.data());
+      tmp_entry->setQuery(query);
     }
-  next:
-    if (count > 100)
-    {
-      count= 0;
-      //      fseek(input_file,-len, SEEK_CUR);
-      break;
-    }
-    if (next_line.empty())
-    {
-      line = readline();
-      if (line.empty())
-        break;
-    }
-    next_line.clear();
   }
 
-  if (tmp_entry->hasQuery())
+  if (tmp_entry && tmp_entry->hasQuery()) {
+    if (!entries)
+      entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
     entries->push_back(tmp_entry);
+  }
 
   return entries;
 }
@@ -287,16 +260,6 @@ std::string QueryLogEntry::getQuery(bool remove_timestamp) {
   while (unprocessed_query.starts_with(' ') || unprocessed_query.starts_with('\t'))
     s.remove_prefix(1);
     */
-}
-
-void QueryLogEntry::add_query_line(boost::string_ref s)
-{
-  if (unprocessed_query.empty()) {
-    unprocessed_query = s;
-  } else {
-    assert(s.data() == &unprocessed_query.back()+1);
-    unprocessed_query = boost::string_ref(unprocessed_query.data(), unprocessed_query.size() + s.size());
-  }
 }
 
 bool QueryLogEntry::parse_metadata(boost::string_ref s)

@@ -52,11 +52,11 @@ public:
   void setTime(boost::posix_time::ptime time) { start_time = time; }
   double getQueryTime() { return query_time; }
 
-  void add_query_line(boost::string_ref s);
   bool parse_metadata(boost::string_ref s);
 
   bool hasQuery() const { return !unprocessed_query.empty(); }
   std::string getQuery(bool remove_timestamp);
+  void setQuery(boost::string_ref s) { unprocessed_query = s; }
 
   void display()
   {
