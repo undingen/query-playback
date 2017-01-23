@@ -27,8 +27,7 @@ protected:
   uint64_t thread_id;
   bool shutdown;
 public:
-  QueryEntry() : thread_id(0), shutdown(false) {};
-  QueryEntry(uint64_t _thread_id, bool _shutdown) :
+  QueryEntry(uint64_t _thread_id = 0, bool _shutdown = false) :
     thread_id(_thread_id), shutdown(_shutdown) {}
   virtual ~QueryEntry() {}
 

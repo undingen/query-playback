@@ -58,6 +58,7 @@ namespace po= boost::program_options;
 
 static bool g_run_set_timestamp;
 static bool g_preserve_query_time;
+static bool g_preserve_query_starttime;
 
 extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
@@ -93,6 +94,11 @@ private:
   boost::string_ref::size_type pos;
 };
 
+
+struct QueryLogFinishEntry : QueryLogEntry {
+  QueryLogFinishEntry(uint64_t _thread_id = 0) : QueryLogEntry(_thread_id, true){}
+};
+
 void* dispatch(void *input_);
 
 boost::string_ref ParseQueryLogFunc::readline() {
@@ -112,6 +118,8 @@ void* ParseQueryLogFunc::operator() (void*)  {
   boost::shared_ptr<QueryLogEntry> tmp_entry;
 
   boost::string_ref line, next_line;
+
+  std::set<uint64_t> thread_ids;
 
   for (;;) {
     if (next_line.empty()) {
@@ -149,6 +157,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
       if (tmp_entry && tmp_entry->hasQuery()) {
         if (!entries)
           entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
+        thread_ids.insert(tmp_entry->getThreadId());
         entries->push_back(tmp_entry);
       }
       tmp_entry.reset(new QueryLogEntry());
@@ -175,12 +184,20 @@ void* ParseQueryLogFunc::operator() (void*)  {
   if (tmp_entry && tmp_entry->hasQuery()) {
     if (!entries)
       entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
+    thread_ids.insert(tmp_entry->getThreadId());
     entries->push_back(tmp_entry);
   }
 
-
-  if (entries)
+  // shutdown threads:
+  if (entries) {
     std::stable_sort(entries->begin(), entries->end(), compare_by_time);
+    for (std::vector<boost::shared_ptr<QueryLogEntry> >::size_type i = entries->size() - 1; !thread_ids.empty(); --i) {
+      uint64_t thread_id = (*entries)[i]->getThreadId();
+      if (thread_ids.erase(thread_id) == 0)
+        continue;
+      entries->insert(entries->begin()+i, boost::shared_ptr<QueryLogEntry>(new QueryLogFinishEntry(thread_id)));
+    }
+  }
 
   return entries;
 }
@@ -213,6 +230,8 @@ bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
 void QueryLogEntry::execute(DBThread *t)
 {
   QueryResult r;
+
+  boost::posix_time::ptime tt = getStartTime();
 
   std::string query = getQuery(!g_run_set_timestamp);
 
@@ -414,6 +433,11 @@ public:
           zero_tokens(),
        _("Ensure that each query takes at least Query_time (from slow query "
 	 "log) to execute."))
+      ("query-log-preserve-query-startime",
+       po::value<bool>(&g_preserve_query_starttime)->
+        default_value(false)->
+          zero_tokens(),
+       _("Ensure that each query executes at the exact time."))
       ;
 
     return &options;
@@ -478,8 +502,9 @@ public:
         return;
       }
       int size = s.st_size;
-      const char* ptr = (const char *)mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
-      data = boost::string_ref(ptr, size);
+      void* ptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
+      madvise(ptr, size, MADV_WILLNEED);
+      data = boost::string_ref((const char*)ptr, size);
     }
 
     boost::thread log_reader_thread(LogReaderThread,
