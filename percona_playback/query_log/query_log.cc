@@ -26,6 +26,7 @@
 #include <boost/thread.hpp>
 #include "query_log.h"
 #include <unistd.h>
+#include <time.h>
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -62,22 +63,21 @@ static bool g_preserve_query_starttime;
 
 extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
-class ParseQueryLogFunc: public tbb::filter {
+class ParseQueryLogFunc {
 public:
   ParseQueryLogFunc(boost::string_ref data_,
 		    unsigned int run_count_,
 		    tbb::atomic<uint64_t> *entries_,
 		    tbb::atomic<uint64_t> *queries_)
-    : tbb::filter(true),
-      nr_entries(entries_),
+    : nr_entries(entries_),
       nr_queries(queries_),
       data(data_),
       run_count(run_count_),
       pos(0)
   {
-  };
+  }
 
-  void* operator() (void*);
+  std::vector<boost::shared_ptr<QueryLogEntry> > getEntries();
 
 private:
   bool parse_time(boost::string_ref s);
@@ -88,18 +88,11 @@ private:
   tbb::atomic<uint64_t> *nr_queries;
   boost::string_ref data;
   unsigned int run_count;
-  boost::posix_time::ptime first_query_time;
+  boost::chrono::system_clock::time_point first_query_time;
 
-  boost::posix_time::ptime start_time;
+  boost::chrono::system_clock::time_point start_time;
   boost::string_ref::size_type pos;
 };
-
-
-struct QueryLogFinishEntry : QueryLogEntry {
-  QueryLogFinishEntry(uint64_t _thread_id = 0) : QueryLogEntry(_thread_id, true){}
-};
-
-void* dispatch(void *input_);
 
 boost::string_ref ParseQueryLogFunc::readline() {
   boost::string_ref::size_type new_pos = data.substr(pos).find('\n');
@@ -113,13 +106,13 @@ static bool compare_by_time(const boost::shared_ptr<QueryLogEntry>& first, const
     return first->getStartTime() < second->getStartTime();
 }
 
-void* ParseQueryLogFunc::operator() (void*)  {
-  std::vector<boost::shared_ptr<QueryLogEntry> > *entries = NULL;
+std::vector<boost::shared_ptr<QueryLogEntry> > ParseQueryLogFunc::getEntries()  {
+  std::vector<boost::shared_ptr<QueryLogEntry> > entries;
   boost::shared_ptr<QueryLogEntry> tmp_entry;
 
   boost::string_ref line, next_line;
 
-  std::set<uint64_t> thread_ids;
+  //std::set<uint64_t> thread_ids;
 
   for (;;) {
     if (next_line.empty()) {
@@ -155,10 +148,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
     if (line.starts_with("# User@Host"))
     {
       if (tmp_entry && tmp_entry->hasQuery()) {
-        if (!entries)
-          entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
-        thread_ids.insert(tmp_entry->getThreadId());
-        entries->push_back(tmp_entry);
+        entries.push_back(tmp_entry);
       }
       tmp_entry.reset(new QueryLogEntry());
       tmp_entry->setTime(start_time);
@@ -182,12 +172,10 @@ void* ParseQueryLogFunc::operator() (void*)  {
   }
 
   if (tmp_entry && tmp_entry->hasQuery()) {
-    if (!entries)
-      entries = new std::vector<boost::shared_ptr<QueryLogEntry> >();
-    thread_ids.insert(tmp_entry->getThreadId());
-    entries->push_back(tmp_entry);
+    entries.push_back(tmp_entry);
   }
 
+  /*
   // shutdown threads:
   if (entries) {
     std::stable_sort(entries->begin(), entries->end(), compare_by_time);
@@ -198,6 +186,7 @@ void* ParseQueryLogFunc::operator() (void*)  {
       entries->insert(entries->begin()+i, boost::shared_ptr<QueryLogEntry>(new QueryLogFinishEntry(thread_id)));
     }
   }
+  */
 
   return entries;
 }
@@ -205,6 +194,8 @@ void* ParseQueryLogFunc::operator() (void*)  {
 bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
   // # Time: 090402 9:23:36
   // # Time: 090402 9:23:36.123456
+
+#if 0
   static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*", boost::regex_constants::optimize);
   boost::cmatch results;
   if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
@@ -217,10 +208,32 @@ bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
   if (results[7].matched /* microsecs */) {
     td += boost::posix_time::microseconds(std::atol(results.str(7).c_str()));
   }
-  start_time = boost::posix_time::ptime(date, td);
+#endif
+
+  static const boost::regex time_regex("# Time: (\\d\\d)(\\d\\d)(\\d\\d) (\\d+):(\\d+):(\\d+)\\.?(\\d+)?\\s*", boost::regex_constants::optimize);
+  boost::cmatch results;
+  if (!boost::regex_match(s.begin(), s.end(), results, time_regex))
+      return false;
+
+  int year = std::atol(results.str(1).c_str());
+  std::tm td;
+  memset(&td, 0, sizeof(td));
+  td.tm_year = year < 70 ? 100 + year : year;
+  td.tm_mon = std::atol(results.str(2).c_str());
+  td.tm_mday = std::atol(results.str(3).c_str());
+  td.tm_hour = std::atol(results.str(4).c_str());
+  td.tm_min = std::atol(results.str(5).c_str());
+  td.tm_sec = std::atol(results.str(6).c_str());
+
+  start_time = boost::chrono::system_clock::from_time_t(std::mktime(&td));
+
+  if (results[7].matched /* microsecs */) {
+    start_time += boost::chrono::microseconds(std::atol(results.str(7).c_str()));
+  }
+
 
   // retrieve the time of the first query
-  if (first_query_time.is_not_a_date_time() || start_time < first_query_time)
+  if (first_query_time == boost::chrono::system_clock::time_point::min() || start_time < first_query_time)
       first_query_time = start_time;
 
   std::cout << start_time << " " << first_query_time << std::endl;
@@ -230,8 +243,6 @@ bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
 void QueryLogEntry::execute(DBThread *t)
 {
   QueryResult r;
-
-  boost::posix_time::ptime tt = getStartTime();
 
   std::string query = getQuery(!g_run_set_timestamp);
 
@@ -348,29 +359,6 @@ bool QueryLogEntry::parse_metadata(boost::string_ref s)
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
-void* dispatch (void *input_)
-{
-    std::vector<boost::shared_ptr<QueryLogEntry> > *input= 
-      static_cast<std::vector<boost::shared_ptr<QueryLogEntry> >*>(input_);
-    for (unsigned int i=0; i< input->size(); i++)
-    {
-      //      usleep(10);
-      g_dispatcher_plugin->dispatch((*input)[i]);
-    }
-    delete input;
-    return NULL;
-}
-
-class DispatchQueriesFunc : public tbb::filter {
-public:
-  DispatchQueriesFunc() : tbb::filter(true) {};
-
-  void* operator() (void *input_)
-  {
-    return dispatch(input_);
-  }
-};
-
 static void LogReaderThread(boost::string_ref data, unsigned int run_count, struct percona_playback_run_result *r)
 {
   tbb::pipeline p;
@@ -380,12 +368,24 @@ static void LogReaderThread(boost::string_ref data, unsigned int run_count, stru
   queries=0;
 
   ParseQueryLogFunc f2(data, run_count, &entries, &queries);
-  DispatchQueriesFunc f4;
-  p.add_filter(f2);
-  p.add_filter(f4);
-  p.run(2);
+  std::vector<boost::shared_ptr<QueryLogEntry> > entry_vec = f2.getEntries();
 
+
+  if (!entry_vec.empty()) {
+    boost::chrono::system_clock::time_point start_time = entry_vec[0]->getStartTime();
+    boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
+    boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
+
+
+    for (std::vector<boost::shared_ptr<QueryLogEntry> >::iterator it = entry_vec.begin(), it_end = entry_vec.end(); it != it_end; ++it) {
+      boost::shared_ptr<QueryLogEntry> entry = *it;
+      boost::this_thread::sleep_until(entry->getStartTime() + diff);
+      g_dispatcher_plugin->dispatch(entry);
+    }
+
+  }
   g_dispatcher_plugin->finish_all_and_wait();
+
 
   r->n_log_entries= entries;
   r->n_queries= queries;

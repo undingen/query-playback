@@ -21,7 +21,6 @@
 #include <boost/crc.hpp>
 #include <vector>
 
-#include <tbb/concurrent_hash_map.h>
 #include <stdio.h>
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
@@ -80,9 +79,6 @@ void ThreadPoolDispatcher::dispatch(QueryEntryPtr query_entry)
 
 void ThreadPoolDispatcher::finish_all_and_wait()
 {
-  QueryEntryPtr shutdown_command(new FinishEntry(0));
-  for (Workers::iterator i = workers.begin(), end = workers.end(); i != end; ++i)
-    (*i)->queries->push(shutdown_command);
   for (Workers::iterator i = workers.begin(), end = workers.end(); i != end; ++i)
     (*i)->join();
   workers.clear();

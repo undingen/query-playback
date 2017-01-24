@@ -37,13 +37,10 @@ void DBThread::run()
 {
   connect_and_init_session();
 
-  while (true)
+  while (!queries->empty())
   {
-    QueryEntryPtr query;
-    queries->pop(query);
-
-    if (query->is_shutdown())
-      break;
+    QueryEntryPtr query = queries->front();
+    queries->pop();
 
     if (query->is_quit())
     {

@@ -69,7 +69,6 @@ ThreadPerConnectionDispatcher::finish_and_wait(uint64_t thread_id)
   if (!db_thread)
     return false;
 
-  db_thread->queries->push(QueryEntryPtr(new FinishEntry(thread_id)));
   db_thread->join();
 
   delete db_thread;
@@ -80,8 +79,6 @@ ThreadPerConnectionDispatcher::finish_and_wait(uint64_t thread_id)
 void
 ThreadPerConnectionDispatcher::finish_all_and_wait()
 {
-  QueryEntryPtr shutdown_command(new FinishEntry(0));
-
   while(executors.size())
   {
     uint64_t thread_id;
@@ -93,7 +90,6 @@ ThreadPerConnectionDispatcher::finish_all_and_wait()
     }
     executors.erase(thread_id);
 
-    t->queries->push(shutdown_command);
     t->join();
 
     delete t;

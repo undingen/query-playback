@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/utility/string_ref.hpp>
 #include <tbb/atomic.h>
@@ -42,15 +43,15 @@ class QueryLogEntry : public QueryEntry
 private:
   uint64_t rows_sent;
   uint64_t rows_examined;
-  boost::posix_time::ptime start_time;
+  boost::chrono::system_clock::time_point start_time;
   double query_time;
   boost::string_ref unprocessed_query;
 public:
-  QueryLogEntry(uint64_t _thread_id = 0, bool _shutdown = false)
-    : QueryEntry(_thread_id, _shutdown), rows_sent(0), rows_examined(0), query_time(0) {}
+  QueryLogEntry(uint64_t _thread_id = 0)
+    : QueryEntry(_thread_id), rows_sent(0), rows_examined(0), query_time(0) {}
 
-  void setTime(boost::posix_time::ptime time) { start_time = time; }
-  boost::posix_time::ptime getStartTime() const { return start_time - boost::posix_time::microseconds(query_time*(10^6)); }
+  void setTime(boost::chrono::system_clock::time_point time) { start_time = time; }
+  boost::chrono::system_clock::time_point getStartTime() const { return start_time - boost::chrono::microseconds((long)(query_time*(10^6))); }
   double getQueryTime() { return query_time; }
 
   bool parse_metadata(boost::string_ref s);
