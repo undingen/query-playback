@@ -27,9 +27,10 @@ class QueryEntry
 {
 protected:
   uint64_t thread_id;
+  uint64_t id;
 public:
   QueryEntry(uint64_t _thread_id = 0) :
-    thread_id(_thread_id) {}
+    thread_id(_thread_id), id(0) {}
   virtual ~QueryEntry() {}
 
   virtual bool is_quit()= 0;
