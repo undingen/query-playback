@@ -34,22 +34,6 @@
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
-class DispatchGeneralQueries : public tbb::filter {
-    public:
-        DispatchGeneralQueries() : tbb::filter(true) {};
-
-        void* operator() (void *input_)
-        {
-            std::vector<boost::shared_ptr<GeneralLogEntry> > *input = static_cast<std::vector<boost::shared_ptr<GeneralLogEntry> >*>(input_);
-            for (unsigned int i=0; i< input->size(); i++)
-            {
-              g_dispatcher_plugin->dispatch((*input)[i]);
-            }
-            delete input;
-            return NULL;
-        }
-};
-
 static void GeneralLogReaderThread(FILE* input_file, unsigned int run_count, struct percona_playback_run_result *r)
 {
   tbb::pipeline p;
@@ -59,10 +43,9 @@ static void GeneralLogReaderThread(FILE* input_file, unsigned int run_count, str
   queries = 0;
 
   ParseGeneralLog f2(input_file, run_count, &entries, &queries);
-  DispatchGeneralQueries f4;
-  p.add_filter(f2);
-  p.add_filter(f4);
-  p.run(2);
+
+  QueryEntryPtrVec entry_vec = f2.getEntries();
+  g_dispatcher_plugin->dispatch(entry_vec);
 
   g_dispatcher_plugin->finish_all_and_wait();
 

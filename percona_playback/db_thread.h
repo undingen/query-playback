@@ -40,14 +40,15 @@ class DBThread
 private:
   boost::thread thread;
   uint64_t thread_id;
+  boost::chrono::duration<int64_t, boost::micro> diff;
 
 public:
   typedef std::queue<QueryEntryPtr> Queries;
   boost::shared_ptr<Queries> queries;
 
   DBThread(uint64_t _thread_id,
-	   boost::shared_ptr<Queries> _queries) :
-          thread_id(_thread_id), queries(_queries)  {
+           boost::shared_ptr<Queries> _queries, boost::chrono::duration<int64_t, boost::micro> diff) :
+          thread_id(_thread_id), queries(_queries), diff(diff)  {
   }
 
   virtual ~DBThread() {}
@@ -66,6 +67,8 @@ public:
     }
     return false;
   }
+
+  boost::chrono::duration<int64_t, boost::micro> getDiff() { return diff; }
 
   void    init_session();
   virtual bool connect()= 0;

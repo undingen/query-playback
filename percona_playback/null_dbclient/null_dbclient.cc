@@ -20,9 +20,9 @@
 class NULLDBThread : public DBThread
 {
  public:
-  NULLDBThread(uint64_t _thread_id) :
+  NULLDBThread(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) :
 	  DBThread(_thread_id,
-		   boost::shared_ptr<Queries>(new Queries())) {}
+                   boost::shared_ptr<Queries>(new Queries()), diff) {}
 
   bool connect() { return true; };
   void disconnect() {};
@@ -37,8 +37,8 @@ class NULLDBClientPlugin : public percona_playback::DBClientPlugin
 public:
   NULLDBClientPlugin(std::string _name) : DBClientPlugin(_name) {};
 
-  virtual DBThread* create(uint64_t _thread_id) {
-    return new NULLDBThread(_thread_id);
+  virtual DBThread* create(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) {
+    return new NULLDBThread(_thread_id, diff);
   }
 };
 

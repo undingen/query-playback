@@ -123,8 +123,8 @@ private:
 public:
   MySQLDBClientPlugin(std::string _name) : DBClientPlugin(_name) {};
 
-  virtual DBThread* create(uint64_t _thread_id) {
-    return new MySQLDBThread(_thread_id, &options);
+  virtual DBThread* create(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) {
+    return new MySQLDBThread(_thread_id, &options, diff);
   }
 
   virtual boost::program_options::options_description* getProgramOptions() {

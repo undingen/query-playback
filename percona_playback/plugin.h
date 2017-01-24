@@ -78,7 +78,7 @@ class DBClientPlugin : public plugin
 
   DBClientPlugin(std::string _name) : name(_name) {};
 
-  virtual DBThread *create(uint64_t _thread_id)=0;
+  virtual DBThread *create(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff)=0;
 };
 
 class ReportPlugin : public plugin
@@ -114,8 +114,7 @@ class DispatcherPlugin : public plugin
 
   DispatcherPlugin(const std::string &_name) : name(_name) {}
 
-  virtual void dispatch(QueryEntryPtr query_entry)= 0;
-  virtual bool finish_and_wait(uint64_t thread_id)= 0;
+  virtual void dispatch(QueryEntryPtrVec query_entries)= 0;
   virtual void finish_all_and_wait()= 0;
 
   virtual void run() {};

@@ -17,7 +17,9 @@
 #define PERCONA_PLAYBACK_QUERY_ENTRY_H
 
 #include <boost/shared_ptr.hpp>
+#include <boost/chrono.hpp>
 #include <stdint.h>
+#include <vector>
 
 class DBThread;
 
@@ -35,8 +37,10 @@ public:
   uint64_t getThreadId() const { return thread_id; }
 
   virtual void execute(DBThread *t)= 0;
+  virtual boost::chrono::system_clock::time_point getStartTime() const { return boost::chrono::system_clock::time_point(); }
 
 };
 
 typedef boost::shared_ptr<QueryEntry> QueryEntryPtr;
+typedef std::vector<QueryEntryPtr> QueryEntryPtrVec;
 #endif /* PERCONA_PLAYBACK_QUERY_ENTRY_H */

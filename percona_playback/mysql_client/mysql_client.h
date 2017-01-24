@@ -28,9 +28,9 @@ class MySQLDBThread : public DBThread
   static const unsigned max_err_num = 10;
 
  public:
-  MySQLDBThread(uint64_t _thread_id, MySQLOptions *opt) :
+  MySQLDBThread(uint64_t _thread_id, MySQLOptions *opt, boost::chrono::duration<int64_t, boost::micro> diff) :
     DBThread(_thread_id,
-	     boost::shared_ptr<Queries>(new Queries())),
+             boost::shared_ptr<Queries>(new Queries()), diff),
     options(opt)
   {
   }

@@ -77,7 +77,7 @@ public:
   {
   }
 
-  std::vector<boost::shared_ptr<QueryLogEntry> > getEntries();
+  QueryEntryPtrVec getEntries();
 
 private:
   bool parse_time(boost::string_ref s);
@@ -88,7 +88,6 @@ private:
   tbb::atomic<uint64_t> *nr_queries;
   boost::string_ref data;
   unsigned int run_count;
-  boost::chrono::system_clock::time_point first_query_time;
 
   boost::chrono::system_clock::time_point start_time;
   boost::string_ref::size_type pos;
@@ -102,12 +101,13 @@ boost::string_ref ParseQueryLogFunc::readline() {
   return line;
 }
 
-static bool compare_by_time(const boost::shared_ptr<QueryLogEntry>& first, const boost::shared_ptr<QueryLogEntry>& second) {
-    return first->getStartTime() < second->getStartTime();
+static bool compare_by_time(const QueryEntryPtr& first, const QueryEntryPtr& second) {
+  // we know this can only be QueryLogEntry pointers
+  return boost::static_pointer_cast<QueryLogEntry>(first)->getStartTime() < boost::static_pointer_cast<QueryLogEntry>(second)->getStartTime();
 }
 
-std::vector<boost::shared_ptr<QueryLogEntry> > ParseQueryLogFunc::getEntries()  {
-  std::vector<boost::shared_ptr<QueryLogEntry> > entries;
+QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
+  QueryEntryPtrVec entries;
   boost::shared_ptr<QueryLogEntry> tmp_entry;
 
   boost::string_ref line, next_line;
@@ -125,7 +125,7 @@ std::vector<boost::shared_ptr<QueryLogEntry> > ParseQueryLogFunc::getEntries()  
     }
 
     if (line.starts_with("# Time")) {
-      //parse_time(line);
+      parse_time(line);
       continue;
     }
 
@@ -175,18 +175,7 @@ std::vector<boost::shared_ptr<QueryLogEntry> > ParseQueryLogFunc::getEntries()  
     entries.push_back(tmp_entry);
   }
 
-  /*
-  // shutdown threads:
-  if (entries) {
-    std::stable_sort(entries->begin(), entries->end(), compare_by_time);
-    for (std::vector<boost::shared_ptr<QueryLogEntry> >::size_type i = entries->size() - 1; !thread_ids.empty(); --i) {
-      uint64_t thread_id = (*entries)[i]->getThreadId();
-      if (thread_ids.erase(thread_id) == 0)
-        continue;
-      entries->insert(entries->begin()+i, boost::shared_ptr<QueryLogEntry>(new QueryLogFinishEntry(thread_id)));
-    }
-  }
-  */
+  std::stable_sort(entries.begin(), entries.end(), compare_by_time);
 
   return entries;
 }
@@ -227,16 +216,9 @@ bool ParseQueryLogFunc::parse_time(boost::string_ref s) {
 
   start_time = boost::chrono::system_clock::from_time_t(std::mktime(&td));
 
-  if (results[7].matched /* microsecs */) {
+  if (results[7].matched /* microsecs */)
     start_time += boost::chrono::microseconds(std::atol(results.str(7).c_str()));
-  }
 
-
-  // retrieve the time of the first query
-  if (first_query_time == boost::chrono::system_clock::time_point::min() || start_time < first_query_time)
-      first_query_time = start_time;
-
-  std::cout << start_time << " " << first_query_time << std::endl;
   return true;
 }
 
@@ -245,6 +227,8 @@ void QueryLogEntry::execute(DBThread *t)
   QueryResult r;
 
   std::string query = getQuery(!g_run_set_timestamp);
+
+  boost::this_thread::sleep_until(getStartTime() + t->getDiff());
 
   QueryResult expected_result;
   expected_result.setRowsSent(rows_sent);
@@ -361,27 +345,16 @@ extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
 static void LogReaderThread(boost::string_ref data, unsigned int run_count, struct percona_playback_run_result *r)
 {
-  tbb::pipeline p;
   tbb::atomic<uint64_t> entries;
   tbb::atomic<uint64_t> queries;
   entries=0;
   queries=0;
 
   ParseQueryLogFunc f2(data, run_count, &entries, &queries);
-  std::vector<boost::shared_ptr<QueryLogEntry> > entry_vec = f2.getEntries();
-
+  QueryEntryPtrVec entry_vec = f2.getEntries();
 
   if (!entry_vec.empty()) {
-    boost::chrono::system_clock::time_point start_time = entry_vec[0]->getStartTime();
-    boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
-    boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
-
-
-    for (std::vector<boost::shared_ptr<QueryLogEntry> >::iterator it = entry_vec.begin(), it_end = entry_vec.end(); it != it_end; ++it) {
-      boost::shared_ptr<QueryLogEntry> entry = *it;
-      boost::this_thread::sleep_until(entry->getStartTime() + diff);
-      g_dispatcher_plugin->dispatch(entry);
-    }
+    g_dispatcher_plugin->dispatch(entry_vec);
 
   }
   g_dispatcher_plugin->finish_all_and_wait();

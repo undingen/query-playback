@@ -16,12 +16,12 @@
 #include "percona_playback/plugin.h"
 #include "percona_playback/db_thread.h"
 
-#include <tbb/concurrent_hash_map.h>
+#include <boost/chrono.hpp>
 
 class ThreadPerConnectionDispatcher :
 	public percona_playback::DispatcherPlugin
 {
-  typedef tbb::concurrent_hash_map<uint64_t, DBThread*> DBExecutorsTable;
+  typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
   DBExecutorsTable  executors;
   void db_thread_func(DBThread *thread);
   void start_thread(DBThread *thread);
@@ -30,7 +30,7 @@ public:
   ThreadPerConnectionDispatcher(std::string _name) :
 	  DispatcherPlugin(_name) {}
 
-  void dispatch(QueryEntryPtr query_entry);
+  void dispatch(QueryEntryPtrVec query_entries);
   bool finish_and_wait(uint64_t thread_id);
   void finish_all_and_wait();
 };
@@ -38,61 +38,40 @@ public:
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
 void
-ThreadPerConnectionDispatcher::dispatch(QueryEntryPtr query_entry)
+ThreadPerConnectionDispatcher::dispatch(QueryEntryPtrVec query_entries)
 {
-  uint64_t thread_id= query_entry->getThreadId();
-  {
-    DBExecutorsTable::accessor a;
-    if (executors.insert(a, thread_id))
-    {
-      DBThread *db_thread= g_dbclient_plugin->create(thread_id);
-      a->second= db_thread;
-      db_thread->start_thread();
-    }
-    a->second->queries->push(query_entry);
-  }
-}
+  if (query_entries.empty())
+    return;
 
-bool
-ThreadPerConnectionDispatcher::finish_and_wait(uint64_t thread_id)
-{
-  DBThread *db_thread= NULL;
-  {
-    DBExecutorsTable::accessor a;
-    if (executors.find(a, thread_id))
-    {
-      db_thread= a->second;
-      executors.erase(a);
-    }
+  boost::chrono::system_clock::time_point start_time = query_entries[0]->getStartTime();
+  boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
+  boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
+
+  std::cout << "num: " << query_entries.size() << std::endl;
+
+  for (QueryEntryPtrVec::iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
+    QueryEntryPtr entry = *it;
+
+    uint64_t thread_id= entry->getThreadId();
+    DBThread*& db_thread = executors[thread_id];
+    if (!db_thread)
+      db_thread= g_dbclient_plugin->create(thread_id, diff);
+    db_thread->queries->push(entry);
   }
 
-  if (!db_thread)
-    return false;
-
-  db_thread->join();
-
-  delete db_thread;
-
-  return true;
+  for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
+  {
+    it->second->start_thread();
+  }
 }
 
 void
 ThreadPerConnectionDispatcher::finish_all_and_wait()
 {
-  while(executors.size())
+  for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
   {
-    uint64_t thread_id;
-    DBThread *t;
-    {
-      DBExecutorsTable::const_iterator iter= executors.begin();
-      thread_id= (*iter).first;
-      t= (*iter).second;
-    }
-    executors.erase(thread_id);
-
-    t->join();
-
-    delete t;
+    it->second->join();
+    delete it->second;
   }
 }
 
