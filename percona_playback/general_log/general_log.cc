@@ -21,14 +21,7 @@
 #include <boost/program_options.hpp>
 #include <boost/thread.hpp>
 
-
-#include <tbb/pipeline.h>
-#include <tbb/tick_count.h>
-#include <tbb/task_scheduler_init.h>
-#include <tbb/tbb_allocator.h>
 #include <tbb/atomic.h>
-#include <tbb/concurrent_queue.h>
-#include <tbb/concurrent_hash_map.h>
 
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
@@ -36,7 +29,6 @@ extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
 
 static void GeneralLogReaderThread(FILE* input_file, unsigned int run_count, struct percona_playback_run_result *r)
 {
-  tbb::pipeline p;
   tbb::atomic<uint64_t> entries;
   tbb::atomic<uint64_t> queries;
   entries = 0;
