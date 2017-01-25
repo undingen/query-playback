@@ -28,7 +28,7 @@ class NULLDBThread : public DBThread
   void disconnect() {};
   void execute_query(boost::string_ref q, QueryResult *r,
 		     const QueryResult &expected_result) {
-    std::cout << "executing: " <<  boost::chrono::system_clock::now() << " '" << q << "'" << std::endl;
+    //std::cout << "executing: " <<  boost::chrono::system_clock::now() << " '" << q << "'" << std::endl;
     *r= expected_result;
   };
 };

@@ -52,7 +52,7 @@ public:
   }
 
   virtual ~DBThread() {
-    std::cout << "Thread " << thread_id << " thread terminating" << std::endl;
+    //std::cout << "Thread " << thread_id << " thread terminating" << std::endl;
   }
 
   void join()

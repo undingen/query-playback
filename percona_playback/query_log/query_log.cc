@@ -193,6 +193,9 @@ QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
     entries.push_back(tmp_entry);
   }
 
+  if (entries.empty())
+    return entries;
+
   std::stable_sort(entries.begin(), entries.end(), compare_by_time);
 
   return entries;

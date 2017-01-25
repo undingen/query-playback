@@ -47,7 +47,7 @@ ThreadPerConnectionDispatcher::dispatch(QueryEntryPtrVec query_entries)
   boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
   boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
 
-  std::cout << "num: " << query_entries.size() << std::endl;
+  //std::cout << "num: " << query_entries.size() << std::endl;
 
   for (QueryEntryPtrVec::iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
     QueryEntryPtr entry = *it;
