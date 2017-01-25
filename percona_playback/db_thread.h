@@ -51,7 +51,9 @@ public:
           thread_id(_thread_id), queries(_queries), diff(diff)  {
   }
 
-  virtual ~DBThread() {}
+  virtual ~DBThread() {
+    std::cout << "Thread " << thread_id << " thread terminating" << std::endl;
+  }
 
   void join()
   {

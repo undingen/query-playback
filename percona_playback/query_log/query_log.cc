@@ -101,9 +101,26 @@ boost::string_ref ParseQueryLogFunc::readline() {
   return line;
 }
 
-static bool compare_by_time(const QueryEntryPtr& first, const QueryEntryPtr& second) {
+static bool compare_by_time(const QueryEntryPtr& _first, const QueryEntryPtr& _second) {
   // we know this can only be QueryLogEntry pointers
-  return boost::static_pointer_cast<QueryLogEntry>(first)->getStartTime() < boost::static_pointer_cast<QueryLogEntry>(second)->getStartTime();
+  const QueryLogEntry& first = *boost::static_pointer_cast<QueryLogEntry>(_first);
+  const QueryLogEntry& second = *boost::static_pointer_cast<QueryLogEntry>(_second);
+
+  return first < second;
+}
+
+bool QueryLogEntry::operator<(const QueryLogEntry& second) const {
+  // for same connections we make sure that the follow the order in the query log
+  if (getThreadId() == second.getThreadId())
+    return unprocessed_query.data() < second.unprocessed_query.data();
+  return getStartTime() < second.getStartTime();
+}
+
+static boost::string_ref trim(boost::string_ref str, boost::string_ref chars) {
+  boost::string_ref::size_type start_pos = str.find_first_not_of(chars);
+  if (start_pos == boost::string_ref::npos)
+    start_pos = 0;
+  return str.substr(start_pos, str.find_last_not_of(chars) + 1 - start_pos);
 }
 
 QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
@@ -167,7 +184,8 @@ QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
       } while (!next_line.empty() && !next_line.starts_with('#'));
 
       boost::string_ref query(line.data(), next_line.data() - line.data());
-      tmp_entry->setQuery(query);
+
+      tmp_entry->setQuery(trim(query, " \n\r\t"));
     }
   }
 
@@ -270,17 +288,21 @@ void QueryLogEntry::execute(DBThread *t)
 }
 
 std::string QueryLogEntry::getQuery(bool remove_timestamp) {
+  static const boost::regex format_r("SET timestamp=[^\n]*\n[ \t]*", boost::regex_constants::optimize);
   static const boost::regex format("[ ]*\r?\n[ \t]*", boost::regex_constants::optimize);
-  static const boost::regex format_r("[ ]*\r?\n[ \t]*|SET timestamp=[^\n]*\n[ \t]*", boost::regex_constants::optimize);
+
   std::string ret;
   ret.reserve(unprocessed_query.size());
-  boost::regex_replace(std::back_insert_iterator<std::string>(ret), unprocessed_query.begin(), unprocessed_query.end(), remove_timestamp ? format_r:  format, " ");
+
+  if (remove_timestamp) {
+    std::string tmp;
+    tmp.reserve(unprocessed_query.size());
+    boost::regex_replace(std::back_insert_iterator<std::string>(tmp), unprocessed_query.begin(), unprocessed_query.end(), format_r, "");
+    boost::regex_replace(std::back_insert_iterator<std::string>(ret), tmp.begin(), tmp.end(), format, " ");
+  } else {
+    boost::regex_replace(std::back_insert_iterator<std::string>(ret), unprocessed_query.begin(), unprocessed_query.end(), format, " ");
+  }
   return ret;
-  /*
-  //Remove initial spaces for best query viewing in reports
-  while (unprocessed_query.starts_with(' ') || unprocessed_query.starts_with('\t'))
-    s.remove_prefix(1);
-    */
 }
 
 bool QueryLogEntry::parse_metadata(boost::string_ref s)
