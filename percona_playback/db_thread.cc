@@ -35,6 +35,7 @@ void DBThread::init_session()
 
 void DBThread::run()
 {
+  std::cout << "starting " << thread_id << std::endl;
   connect_and_init_session();
 
   while (!queries.empty())
@@ -53,6 +54,9 @@ void DBThread::run()
   }
 
   disconnect();
+
+  std::cout << "stopping " << thread_id << std::endl;
+
   return;
 }
 

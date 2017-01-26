@@ -21,7 +21,8 @@ class NULLDBThread : public DBThread
 {
  public:
   NULLDBThread(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) :
-          DBThread(_thread_id, diff) {}
+          DBThread(_thread_id, diff) {
+  }
 
   bool connect() { return true; };
   void disconnect() {};

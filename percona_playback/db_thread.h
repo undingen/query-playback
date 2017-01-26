@@ -48,10 +48,10 @@ public:
 
   DBThread(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) :
           thread_id(_thread_id), diff(diff)  {
+
   }
 
   virtual ~DBThread() {
-    //std::cout << "Thread " << thread_id << " thread terminating" << std::endl;
   }
 
   void join()
