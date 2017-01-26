@@ -44,25 +44,20 @@ public:
 
   virtual void dispatch(const QueryEntryPtrVec& query_entries);
   virtual void finish_all_and_wait();
-  virtual void run();
 
   boost::program_options::options_description* getProgramOptions();
   int processOptions(boost::program_options::variables_map &vm);
 
 };
 
-void ThreadPoolDispatcher::run()
+void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
 {
   for (unsigned i = 0; i < threads_count; ++i)
   {
     boost::shared_ptr<DBThread> db_thread(g_dbclient_plugin->create(i, boost::chrono::duration<long int, boost::ratio<1l, 1000000l> >()));
     workers.push_back(db_thread);
-    db_thread->start_thread();
   }
-}
 
-void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
-{
   for (QueryEntryPtrVec::const_iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
     /*
       Each worker has its own queue. For some types of input plugins
@@ -75,6 +70,11 @@ void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
     crc.process_bytes(&thread_id, sizeof(thread_id));
     uint32_t worker_index = crc.checksum() % workers.size();
     workers[worker_index]->queries.push(*it);
+  }
+
+  for (unsigned worker_index = 0; worker_index < threads_count; ++worker_index)
+  {
+    workers[worker_index]->start_thread();
   }
 }
 

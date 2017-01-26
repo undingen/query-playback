@@ -18,30 +18,14 @@
 
 #include <boost/chrono.hpp>
 
-class ThreadPerConnectionDispatcher :
-	public percona_playback::DispatcherPlugin
-{
-  typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
-  DBExecutorsTable  executors;
-  void db_thread_func(DBThread *thread);
-  void start_thread(DBThread *thread);
-
-public:
-  ThreadPerConnectionDispatcher(std::string _name) :
-	  DispatcherPlugin(_name) {}
-
-  void dispatch(const QueryEntryPtrVec &query_entries);
-  bool finish_and_wait(uint64_t thread_id);
-  void finish_all_and_wait();
-};
-
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
-void
-ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
-{
+static void dispatchQueries(QueryEntryPtrVec query_entries) {
   if (query_entries.empty())
     return;
+
+  typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
+  DBExecutorsTable  executors;
 
   boost::chrono::system_clock::time_point start_time = query_entries[0]->getStartTime();
   boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
@@ -61,16 +45,42 @@ ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
   {
     it->second->start_thread();
   }
-}
 
-void
-ThreadPerConnectionDispatcher::finish_all_and_wait()
-{
+
   for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
   {
     it->second->join();
     delete it->second;
   }
+}
+
+class ThreadPerConnectionDispatcher :
+	public percona_playback::DispatcherPlugin
+{
+  void start_thread(DBThread *thread);
+
+public:
+  ThreadPerConnectionDispatcher(std::string _name) :
+	  DispatcherPlugin(_name) {}
+
+  void dispatch(const QueryEntryPtrVec &query_entries);
+  void finish_all_and_wait();
+
+  boost::thread thread;
+};
+
+
+void
+ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
+{
+  thread = boost::thread(dispatchQueries, query_entries);
+  thread.start_thread();
+}
+
+void
+ThreadPerConnectionDispatcher::finish_all_and_wait()
+{
+  thread.join();
 }
 
 static void init_plugin(percona_playback::PluginRegistry &r)
