@@ -60,7 +60,7 @@ static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
 
   for (std::vector<DBThread*>::iterator it = threads_sorted_by_start_time.begin(), it_end = threads_sorted_by_start_time.end(); it != it_end; ++it)
   {
-    boost::this_thread::sleep_until((*it)->queries.front()->getStartTime() + diff);
+    boost::this_thread::sleep_until((*it)->queries.front()->getStartTime() + diff - boost::chrono::milliseconds(10));
     (*it)->start_thread();
   }
 
