@@ -24,6 +24,8 @@ static void dispatchQueries(QueryEntryPtrVec query_entries) {
   if (query_entries.empty())
     return;
 
+  std::cout << "query_entries: " << query_entries.size() << std::endl;
+
   typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
   DBExecutorsTable  executors;
 
@@ -74,7 +76,6 @@ void
 ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
 {
   thread = boost::thread(dispatchQueries, query_entries);
-  thread.start_thread();
 }
 
 void
