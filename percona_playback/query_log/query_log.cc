@@ -71,7 +71,7 @@ public:
   {
   }
 
-  QueryEntryPtrVec getEntries();
+  boost::shared_ptr<QueryEntryPtrVec> getEntries();
 
 private:
   bool parse_time(boost::string_ref s);
@@ -117,8 +117,8 @@ static boost::string_ref trim(boost::string_ref str, boost::string_ref chars) {
   return str.substr(start_pos, str.find_last_not_of(chars) + 1 - start_pos);
 }
 
-QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
-  QueryEntryPtrVec entries;
+boost::shared_ptr<QueryEntryPtrVec> ParseQueryLogFunc::getEntries()  {
+  boost::shared_ptr<QueryEntryPtrVec> entries = boost::shared_ptr<QueryEntryPtrVec>(new QueryEntryPtrVec);
   boost::shared_ptr<QueryLogEntry> tmp_entry;
 
   boost::string_ref line, next_line;
@@ -159,7 +159,7 @@ QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
     if (line.starts_with("# User@Host"))
     {
       if (tmp_entry && tmp_entry->hasQuery()) {
-        entries.push_back(tmp_entry);
+        entries->push_back(tmp_entry);
       }
       tmp_entry.reset(new QueryLogEntry());
       tmp_entry->setTime(start_time);
@@ -184,13 +184,13 @@ QueryEntryPtrVec ParseQueryLogFunc::getEntries()  {
   }
 
   if (tmp_entry && tmp_entry->hasQuery()) {
-    entries.push_back(tmp_entry);
+    entries->push_back(tmp_entry);
   }
 
-  if (entries.empty())
+  if (entries->empty())
     return entries;
 
-  std::stable_sort(entries.begin(), entries.end(), compare_by_time);
+  std::stable_sort(entries->begin(), entries->end(), compare_by_time);
 
   return entries;
 }
@@ -369,10 +369,9 @@ static void LogReaderThread(boost::string_ref data, unsigned int run_count, stru
   entries=0;
   queries=0;
 
-  ParseQueryLogFunc f2(data, run_count, &entries, &queries);
-  QueryEntryPtrVec entry_vec = f2.getEntries();
+  boost::shared_ptr<QueryEntryPtrVec> entry_vec = ParseQueryLogFunc(data, run_count, &entries, &queries).getEntries();
 
-  if (!entry_vec.empty()) {
+  if (!entry_vec->empty()) {
     g_dispatcher_plugin->dispatch(entry_vec);
 
   }

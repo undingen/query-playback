@@ -27,7 +27,7 @@ class ParseGeneralLog {
           next_len(0)
       {};
 
-      QueryEntryPtrVec getEntries();
+      boost::shared_ptr<QueryEntryPtrVec> getEntries();
 
     private:
       tbb::atomic<uint64_t> *nr_entries;

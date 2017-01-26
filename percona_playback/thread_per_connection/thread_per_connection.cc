@@ -20,20 +20,24 @@
 
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
-static void dispatchQueries(QueryEntryPtrVec query_entries) {
-  if (query_entries.empty())
+static bool sort_by_time(DBThread* left, DBThread* right) {
+  return left->queries.front()->getStartTime() < right->queries.front()->getStartTime();
+}
+
+static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
+  if (!query_entries || query_entries->empty())
     return;
 
-  std::cout << "query_entries: " << query_entries.size() << std::endl;
+  //std::cout << "query_entries: " << query_entries->size() << std::endl;
 
   typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
   DBExecutorsTable  executors;
 
-  boost::chrono::system_clock::time_point start_time = query_entries[0]->getStartTime();
+  boost::chrono::system_clock::time_point start_time = (*query_entries)[0]->getStartTime();
   boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
   boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
 
-  for (QueryEntryPtrVec::const_iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
+  for (QueryEntryPtrVec::const_iterator it = query_entries->begin(), it_end = query_entries->end(); it != it_end; ++it) {
     QueryEntryPtr entry = *it;
 
     uint64_t thread_id= entry->getThreadId();
@@ -43,9 +47,21 @@ static void dispatchQueries(QueryEntryPtrVec query_entries) {
     db_thread->queries.push(entry);
   }
 
+  // we don't need the original vector anymore.
+  query_entries.reset();
+
+  std::vector<DBThread*> threads_sorted_by_start_time;
+  threads_sorted_by_start_time.reserve(executors.size());
   for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)
   {
-    it->second->start_thread();
+    threads_sorted_by_start_time.push_back(it->second);
+  }
+  std::stable_sort(threads_sorted_by_start_time.begin(), threads_sorted_by_start_time.end(), sort_by_time);
+
+  for (std::vector<DBThread*>::iterator it = threads_sorted_by_start_time.begin(), it_end = threads_sorted_by_start_time.end(); it != it_end; ++it)
+  {
+    boost::this_thread::sleep_until((*it)->queries.front()->getStartTime() + diff);
+    (*it)->start_thread();
   }
 
 
@@ -65,7 +81,7 @@ public:
   ThreadPerConnectionDispatcher(std::string _name) :
 	  DispatcherPlugin(_name) {}
 
-  void dispatch(const QueryEntryPtrVec &query_entries);
+  void dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries);
   void finish_all_and_wait();
 
   boost::thread thread;
@@ -73,7 +89,7 @@ public:
 
 
 void
-ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
+ThreadPerConnectionDispatcher::dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries)
 {
   thread = boost::thread(dispatchQueries, query_entries);
 }

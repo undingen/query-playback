@@ -42,7 +42,7 @@ public:
 	  threads_count(0),
 	  options("Threads-pool Options") {}
 
-  virtual void dispatch(const QueryEntryPtrVec& query_entries);
+  virtual void dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries);
   virtual void finish_all_and_wait();
 
   boost::program_options::options_description* getProgramOptions();
@@ -50,7 +50,7 @@ public:
 
 };
 
-void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
+void ThreadPoolDispatcher::dispatch(boost::shared_ptr<QueryEntryPtrVec> query_entries)
 {
   for (unsigned i = 0; i < threads_count; ++i)
   {
@@ -58,7 +58,7 @@ void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
     workers.push_back(db_thread);
   }
 
-  for (QueryEntryPtrVec::const_iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
+  for (QueryEntryPtrVec::const_iterator it = query_entries->begin(), it_end = query_entries->end(); it != it_end; ++it) {
     /*
       Each worker has its own queue. For some types of input plugins
       it is important to execute query entries with the same thread id

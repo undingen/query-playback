@@ -34,9 +34,7 @@ static void GeneralLogReaderThread(FILE* input_file, unsigned int run_count, str
   entries = 0;
   queries = 0;
 
-  ParseGeneralLog f2(input_file, run_count, &entries, &queries);
-
-  QueryEntryPtrVec entry_vec = f2.getEntries();
+  boost::shared_ptr<QueryEntryPtrVec> entry_vec = ParseGeneralLog(input_file, run_count, &entries, &queries).getEntries();
   g_dispatcher_plugin->dispatch(entry_vec);
 
   g_dispatcher_plugin->finish_all_and_wait();
