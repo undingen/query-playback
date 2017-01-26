@@ -29,8 +29,7 @@ class MySQLDBThread : public DBThread
 
  public:
   MySQLDBThread(uint64_t _thread_id, MySQLOptions *opt, boost::chrono::duration<int64_t, boost::micro> diff) :
-    DBThread(_thread_id,
-             boost::shared_ptr<Queries>(new Queries()), diff),
+    DBThread(_thread_id, diff),
     options(opt)
   {
   }

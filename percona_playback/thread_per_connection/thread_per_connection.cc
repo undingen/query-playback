@@ -30,7 +30,7 @@ public:
   ThreadPerConnectionDispatcher(std::string _name) :
 	  DispatcherPlugin(_name) {}
 
-  void dispatch(QueryEntryPtrVec query_entries);
+  void dispatch(const QueryEntryPtrVec &query_entries);
   bool finish_and_wait(uint64_t thread_id);
   void finish_all_and_wait();
 };
@@ -38,7 +38,7 @@ public:
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
 void
-ThreadPerConnectionDispatcher::dispatch(QueryEntryPtrVec query_entries)
+ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
 {
   if (query_entries.empty())
     return;
@@ -47,16 +47,14 @@ ThreadPerConnectionDispatcher::dispatch(QueryEntryPtrVec query_entries)
   boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
   boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
 
-  //std::cout << "num: " << query_entries.size() << std::endl;
-
-  for (QueryEntryPtrVec::iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
+  for (QueryEntryPtrVec::const_iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
     QueryEntryPtr entry = *it;
 
     uint64_t thread_id= entry->getThreadId();
     DBThread*& db_thread = executors[thread_id];
     if (!db_thread)
       db_thread= g_dbclient_plugin->create(thread_id, diff);
-    db_thread->queries->push(entry);
+    db_thread->queries.push(entry);
   }
 
   for (DBExecutorsTable::iterator it = executors.begin(), it_end = executors.end(); it != it_end; ++it)

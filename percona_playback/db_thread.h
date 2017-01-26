@@ -44,11 +44,10 @@ private:
 
 public:
   typedef std::queue<QueryEntryPtr> Queries;
-  boost::shared_ptr<Queries> queries;
+  Queries queries;
 
-  DBThread(uint64_t _thread_id,
-           boost::shared_ptr<Queries> _queries, boost::chrono::duration<int64_t, boost::micro> diff) :
-          thread_id(_thread_id), queries(_queries), diff(diff)  {
+  DBThread(uint64_t _thread_id, boost::chrono::duration<int64_t, boost::micro> diff) :
+          thread_id(_thread_id), diff(diff)  {
   }
 
   virtual ~DBThread() {

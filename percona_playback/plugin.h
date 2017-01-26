@@ -114,7 +114,7 @@ class DispatcherPlugin : public plugin
 
   DispatcherPlugin(const std::string &_name) : name(_name) {}
 
-  virtual void dispatch(QueryEntryPtrVec query_entries)= 0;
+  virtual void dispatch(const QueryEntryPtrVec& query_entries)= 0;
   virtual void finish_all_and_wait()= 0;
 
   virtual void run() {};

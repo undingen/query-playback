@@ -42,7 +42,7 @@ public:
 	  threads_count(0),
 	  options("Threads-pool Options") {}
 
-  virtual void dispatch(QueryEntryPtrVec query_entries);
+  virtual void dispatch(const QueryEntryPtrVec& query_entries);
   virtual void finish_all_and_wait();
   virtual void run();
 
@@ -61,9 +61,9 @@ void ThreadPoolDispatcher::run()
   }
 }
 
-void ThreadPoolDispatcher::dispatch(QueryEntryPtrVec query_entries)
+void ThreadPoolDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
 {
-  for (QueryEntryPtrVec::iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
+  for (QueryEntryPtrVec::const_iterator it = query_entries.begin(), it_end = query_entries.end(); it != it_end; ++it) {
     /*
       Each worker has its own queue. For some types of input plugins
       it is important to execute query entries with the same thread id
@@ -74,7 +74,7 @@ void ThreadPoolDispatcher::dispatch(QueryEntryPtrVec query_entries)
     boost::crc_32_type crc;
     crc.process_bytes(&thread_id, sizeof(thread_id));
     uint32_t worker_index = crc.checksum() % workers.size();
-    workers[worker_index]->queries->push(*it);
+    workers[worker_index]->queries.push(*it);
   }
 }
 
