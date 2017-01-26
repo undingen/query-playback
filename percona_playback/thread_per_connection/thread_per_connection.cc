@@ -81,7 +81,8 @@ ThreadPerConnectionDispatcher::dispatch(const QueryEntryPtrVec& query_entries)
 void
 ThreadPerConnectionDispatcher::finish_all_and_wait()
 {
-  thread.join();
+  if (thread.joinable())
+    thread.join();
 }
 
 static void init_plugin(percona_playback::PluginRegistry &r)
