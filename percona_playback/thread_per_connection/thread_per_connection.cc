@@ -28,8 +28,6 @@ static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
   if (!query_entries || query_entries->empty())
     return;
 
-  //std::cout << "query_entries: " << query_entries->size() << std::endl;
-
   typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
   DBExecutorsTable  executors;
 
