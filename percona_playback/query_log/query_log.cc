@@ -476,37 +476,52 @@ public:
 
   virtual void run(percona_playback_run_result &result)
   {
-    int fd = -1;
-    boost::string_ref data;
     if (std_in)
     {
-      assert(0);
+      // todo maybe we want to create a temp file in to safe RAM...
+      const int block_size = 1024;
+      std::string data;
+      while (true) {
+        std::string::size_type old_size = data.size();
+        data.resize(old_size + block_size);
+        int num_read = fread(&data[old_size], 1, block_size, stdin);
+        if (num_read < block_size) {
+          data.resize(old_size + num_read);
+          break;
+        }
+      }
+      boost::thread log_reader_thread(LogReaderThread,
+                                      data,
+                                      read_count,
+                                      &result);
+
+      log_reader_thread.join();
     }
     else
     {
       struct stat s;
-      fd = open(file_name.c_str(), O_RDONLY);
+      int fd = open(file_name.c_str(), O_RDONLY);
       if (fd == -1 || fstat(fd, &s) == -1) {
         fprintf(stderr,
           _("ERROR: Error opening file '%s': %s"),
           file_name.c_str(), strerror(errno));
         return;
       }
+      boost::string_ref data;
       int size = s.st_size;
       void* ptr = mmap(0, size, PROT_READ, MAP_PRIVATE, fd, 0);
       madvise(ptr, size, MADV_WILLNEED);
       data = boost::string_ref((const char*)ptr, size);
-    }
 
-    boost::thread log_reader_thread(LogReaderThread,
-            data,
-				    read_count,
-				    &result);
+      boost::thread log_reader_thread(LogReaderThread,
+                                      data,
+                                      read_count,
+                                      &result);
 
-    log_reader_thread.join();
-    munmap(const_cast<char*>(data.data()), data.size());
-    if (fd != -1)
+      log_reader_thread.join();
+      munmap(const_cast<char*>(data.data()), data.size());
       close(fd);
+    }
   }
 };
 
