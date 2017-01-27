@@ -113,41 +113,38 @@ public:
       }
     }
 
-    std::string new_query;
-    new_query.reserve(query.size());
-    boost::to_upper_copy(std::back_insert_iterator<std::string>(new_query), query);
 
-    if (new_query.find("SELECT ") != std::string::npos)
+    if (hasString(query, "SELECT "))
     {
 		nr_select++;
 		nr_select_faster+= faster;
 		nr_select_slower+= slower;
     }
-    else if (new_query.find("UPDATE ") != std::string::npos)
+    else if (hasString(query, "UPDATE "))
     {
 	       	nr_update++;
 		nr_update_faster+= faster;
 		nr_update_slower+= slower;		
     }
-    else if (new_query.find("INSERT ") != std::string::npos)
+    else if (hasString(query, "INSERT "))
     {
 	        nr_insert++;
 		nr_insert_faster+= faster;
 		nr_insert_slower+= slower;
     }
-    else if (new_query.find("DELETE ") != std::string::npos)
+    else if (hasString(query, "DELETE "))
     {
 	        nr_delete++;
 		nr_delete_faster+= faster;
 		nr_delete_slower+= slower;
     }
-    else if (new_query.find("REPLACE ") != std::string::npos)
+    else if (hasString(query, "REPLACE "))
     {
 	        nr_replace++;
 		nr_replace_faster+= faster;
 		nr_replace_slower+= slower;
     }
-    else if (new_query.find("DROP ") != std::string::npos)
+    else if (hasString(query, "DROP "))
     {
  	        nr_drop++;
 		nr_drop_faster+= faster;
@@ -166,6 +163,16 @@ public:
     printf(_("REPLACEs : %" PRIu64 " queries (%" PRIu64 " faster, %" PRIu64 " slower)\n"), uint64_t(nr_replace), uint64_t(nr_replace_faster), uint64_t(nr_replace_slower));
     printf(_("DROPs    : %" PRIu64 " queries (%" PRIu64 " faster, %" PRIu64 " slower)\n\n\n"), uint64_t(nr_drop), uint64_t(nr_drop_faster), uint64_t(nr_drop_slower));
   }
+
+private:
+  static bool caseInsensitiveEq(char left, char right) {
+    return std::toupper(left) == std::toupper(right);
+  }
+
+  bool hasString(boost::string_ref str, boost::string_ref substr) {
+    return std::search(str.begin(), str.end(), substr.begin(), substr.end(), caseInsensitiveEq) != str.end();
+  }
+
 
 };
 
