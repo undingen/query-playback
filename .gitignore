@@ -27,7 +27,6 @@ config/pandora_vc_revinfo
 config/plugin.stamp
 ChangeLog
 Makefile.in
-config.h.in
 config.log
 *.la
 aclocal.m4

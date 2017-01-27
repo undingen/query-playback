@@ -1,0 +1,5 @@
+typedef unsigned long uint64_t;
+#define PACKAGE_VERSION "@playback_VERSION@"
+#define PACKAGE "@playback_PACKAGE@"
+#define PACKAGE_BUGREPORT "@playback_BUGREPORT@"
+
