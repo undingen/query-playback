@@ -20,6 +20,7 @@
 #include <boost/chrono.hpp>
 #include <stdint.h>
 #include <vector>
+#include <queue>
 
 class DBThread;
 
@@ -40,8 +41,9 @@ public:
   virtual void execute(DBThread *t)= 0;
   virtual boost::chrono::system_clock::time_point getStartTime() const { return boost::chrono::system_clock::time_point(); }
 
+  virtual bool operator <(const QueryEntry& e) const { return getStartTime() < e.getStartTime(); }
 };
 
 typedef boost::shared_ptr<QueryEntry> QueryEntryPtr;
-typedef std::vector<QueryEntryPtr> QueryEntryPtrVec;
+typedef std::priority_queue<QueryEntryPtr, std::vector<QueryEntryPtr> > QueryEntryPtrVec;
 #endif /* PERCONA_PLAYBACK_QUERY_ENTRY_H */

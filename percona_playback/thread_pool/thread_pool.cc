@@ -58,18 +58,21 @@ void ThreadPoolDispatcher::dispatch(boost::shared_ptr<QueryEntryPtrVec> query_en
     workers.push_back(db_thread);
   }
 
-  for (QueryEntryPtrVec::const_iterator it = query_entries->begin(), it_end = query_entries->end(); it != it_end; ++it) {
+  while (!query_entries->empty()) {
+    QueryEntryPtr entry = query_entries->top();
+    query_entries->pop();
+
     /*
       Each worker has its own queue. For some types of input plugins
       it is important to execute query entries with the same thread id
       by the same worker. That is why we choose worker by simple hash from
       thread id.
     */
-    uint64_t thread_id= (*it)->getThreadId();
+    uint64_t thread_id= entry->getThreadId();
     boost::crc_32_type crc;
     crc.process_bytes(&thread_id, sizeof(thread_id));
     uint32_t worker_index = crc.checksum() % workers.size();
-    workers[worker_index]->queries.push(*it);
+    workers[worker_index]->queries.push(entry);
   }
 
   for (unsigned worker_index = 0; worker_index < threads_count; ++worker_index)

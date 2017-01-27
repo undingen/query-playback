@@ -21,7 +21,7 @@
 extern percona_playback::DBClientPlugin *g_dbclient_plugin;
 
 static bool sort_by_time(DBThread* left, DBThread* right) {
-  return left->queries.front()->getStartTime() < right->queries.front()->getStartTime();
+  return left->queries.front() < right->queries.front();
 }
 
 static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
@@ -33,12 +33,13 @@ static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
   typedef std::map<uint64_t, DBThread*> DBExecutorsTable;
   DBExecutorsTable  executors;
 
-  boost::chrono::system_clock::time_point start_time = (*query_entries)[0]->getStartTime();
+  boost::chrono::system_clock::time_point start_time = query_entries->top()->getStartTime();
   boost::chrono::system_clock::time_point now = boost::chrono::system_clock::now();
   boost::chrono::duration<int64_t, boost::micro> diff = boost::chrono::duration_cast<boost::chrono::duration<int64_t, boost::micro> >(now - start_time);
 
-  for (QueryEntryPtrVec::const_iterator it = query_entries->begin(), it_end = query_entries->end(); it != it_end; ++it) {
-    QueryEntryPtr entry = *it;
+  while (!query_entries->empty()) {
+    QueryEntryPtr entry =  query_entries->top();
+    query_entries->pop();
 
     uint64_t thread_id= entry->getThreadId();
     DBThread*& db_thread = executors[thread_id];
@@ -46,9 +47,6 @@ static void dispatchQueries(boost::shared_ptr<QueryEntryPtrVec> query_entries) {
       db_thread= g_dbclient_plugin->create(thread_id, diff);
     db_thread->queries.push(entry);
   }
-
-  // we don't need the original vector anymore.
-  query_entries.reset();
 
   std::vector<DBThread*> threads_sorted_by_start_time;
   threads_sorted_by_start_time.reserve(executors.size());

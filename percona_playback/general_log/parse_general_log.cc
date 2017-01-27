@@ -50,7 +50,7 @@ boost::shared_ptr<QueryEntryPtrVec> ParseGeneralLog::getEntries()
             tmp_entry->add_query_line(std::string(line));
             if (!tmp_entry->getQuery().empty())
             {
-                entries->push_back(tmp_entry);
+                entries->push(tmp_entry);
                 (*nr_queries)++;
                 (*nr_entries)++;
                 tmp_entry.reset(new GeneralLogEntry());

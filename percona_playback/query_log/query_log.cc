@@ -95,15 +95,9 @@ boost::string_ref ParseQueryLogFunc::readline() {
   return line;
 }
 
-static bool compare_by_time(const QueryEntryPtr& _first, const QueryEntryPtr& _second) {
-  // we know this can only be QueryLogEntry pointers
-  const QueryLogEntry& first = *boost::static_pointer_cast<QueryLogEntry>(_first);
-  const QueryLogEntry& second = *boost::static_pointer_cast<QueryLogEntry>(_second);
+bool QueryLogEntry::operator<(const QueryEntry& _second) const {
+  const QueryLogEntry& second = static_cast<const QueryLogEntry&>(_second);
 
-  return first < second;
-}
-
-bool QueryLogEntry::operator<(const QueryLogEntry& second) const {
   // for same connections we make sure that the follow the order in the query log
   if (getThreadId() == second.getThreadId())
     return unprocessed_query.data() < second.unprocessed_query.data();
@@ -159,7 +153,7 @@ boost::shared_ptr<QueryEntryPtrVec> ParseQueryLogFunc::getEntries()  {
     if (line.starts_with("# User@Host"))
     {
       if (tmp_entry && tmp_entry->hasQuery()) {
-        entries->push_back(tmp_entry);
+        entries->push(tmp_entry);
       }
       tmp_entry.reset(new QueryLogEntry());
       tmp_entry->setTime(start_time);
@@ -184,13 +178,11 @@ boost::shared_ptr<QueryEntryPtrVec> ParseQueryLogFunc::getEntries()  {
   }
 
   if (tmp_entry && tmp_entry->hasQuery()) {
-    entries->push_back(tmp_entry);
+    entries->push(tmp_entry);
   }
 
   if (entries->empty())
     return entries;
-
-  std::stable_sort(entries->begin(), entries->end(), compare_by_time);
 
   return entries;
 }

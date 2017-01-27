@@ -72,7 +72,7 @@ public:
 
   void execute(DBThread *t);
 
-  bool operator<(const QueryLogEntry& second) const;
+  bool operator<(const QueryEntry& second) const;
 };
 
 
