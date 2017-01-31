@@ -9,3 +9,4 @@ link_directories(${Boost_LIBRARY_DIR})
 
 add_library(thread_per_connection thread_per_connection.cc)
 target_link_libraries(thread_per_connection ${Boost_LIBRARIES})
+target_link_libraries(thread_per_connection tbb)
