@@ -27,5 +27,10 @@ function(read_plugin_ini plugin_name)
  add_definitions(-DPANDORA_MODULE_AUTHOR="")
  add_definitions(-DPANDORA_MODULE_TITLE="${plugin_title}")
  add_definitions(-DPANDORA_MODULE_NAME=${plugin_name})
+
+
+ #add_definitions(-DBUILDING_PERCONA_PLAYBACK)
+
+ target_link_libraries(${plugin_name} libpercona-playbackplugin)
 endfunction(read_plugin_ini)
 

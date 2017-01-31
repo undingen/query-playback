@@ -1,7 +1,6 @@
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/percona_playback")
 include(plugin)
 
-read_plugin_ini("mysql_client")
 
 find_package(Boost COMPONENTS system thread regex program_options REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
@@ -24,3 +23,5 @@ target_link_libraries(mysql_client mysqlclient_r)
 #strings(REGEX MATCHALL "-l[\\W*]", 
 #
 #add_compile_options(${MYSQL_LIBS})
+
+read_plugin_ini("mysql_client")

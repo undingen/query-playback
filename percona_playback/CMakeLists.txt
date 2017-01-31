@@ -6,9 +6,13 @@ find_package(Boost COMPONENTS system thread regex program_options REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
 
-add_library(libpercona-playback db_thread.cc
-                                percona_playback.cc
-                                plugin.cc)
+add_library(libpercona-playbackplugin db_thread.cc)
+
+add_library(libpercona-playback plugin.cc percona_playback.cc)
+
+target_link_libraries(libpercona-playback "dl")
+
+target_link_libraries(libpercona-playbackplugin ${Boost_LIBRARIES})
 
 include_directories(${PROJECT_SOURCE_DIR})
 
