@@ -16,7 +16,7 @@ include_directories("${MYSQL_INC}/mysql")
 
 add_library(mysql_client mysql_client.cc)
 target_link_libraries(mysql_client ${Boost_LIBRARIES})
-target_link_libraries(mysql_client mysqlclient)
+target_link_libraries(mysql_client mysqlclient_r)
 
 #set_target_properties(mysql_client PROPERTIES LINK_FLAGS ${MYSQL_LIBS})
 #

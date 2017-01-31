@@ -9,3 +9,6 @@ link_directories(${Boost_LIBRARY_DIR})
 
 add_library(general_log parse_general_log.cc general_log_entry.cc general_log.cc)
 target_link_libraries(general_log ${Boost_LIBRARIES})
+
+install(TARGETS general_log DESTINATION lib)
+

@@ -47,3 +47,6 @@ include_directories("${PROJECT_BINARY_DIR}/percona_playback")
 target_link_libraries(percona-playback "dl")
 target_link_libraries(percona-playback ${Boost_LIBRARIES})
 target_link_libraries(percona-playback "tbb")
+
+install(TARGETS percona-playback RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
+
