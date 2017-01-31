@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
-add_subdirectory(test EXCLUDE_FROM_ALL)
+#add_subdirectory(test EXCLUDE_FROM_ALL)
+add_subdirectory(test)
 
 find_package(Boost COMPONENTS system thread regex program_options REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})

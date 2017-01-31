@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
+enable_testing()
 add_subdirectory(percona_playback)
 
 set(MAJOR_VERSION 0)
@@ -23,8 +24,8 @@ target_link_libraries(percona-playback libpercona-playback)
 
 install(TARGETS percona-playback RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
 
-enable_testing()
-add_test(test-multiline $<TARGET_FILE:test-multiline>)
+
+#add_test(test-basic-multiline ${PROJECT_BINARY_DIR}/percona_playback/test/test-basic-multiline)
 
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "tbb mysql")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/Percona-Lab/query-playback")
