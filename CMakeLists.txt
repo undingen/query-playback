@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(percona-playback)
-set (CMAKE_PROJECT_NAME "percona-playback")
 
 set(MAJOR_VERSION 0)
 set(MINOR_VERSION 7)
@@ -30,8 +29,7 @@ target_link_libraries(percona-playback "tbb")
 
 install(TARGETS percona-playback RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
 
-
-INCLUDE(InstallRequiredSystemLibraries)
+#INCLUDE(InstallRequiredSystemLibraries)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "tbb mysql")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/Percona-Lab/query-playback")
 set(CPACK_DEBIAN_PACKAGE_SECTION "Applications/Databases")
