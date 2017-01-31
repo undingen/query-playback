@@ -12,9 +12,9 @@ find_package(Boost COMPONENTS system thread regex program_options REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
 link_directories(${Boost_LIBRARY_DIR})
 
-add_executable(percona-playback percona_playback/plugin.cc
+add_executable(percona-playback percona_playback/db_thread.cc
                                 percona_playback/percona_playback.cc
-                                percona_playback/db_thread.cc
+                                percona_playback/plugin.cc
                                 bin/percona_playback.cc)
 
 include_directories("${PROJECT_SOURCE_DIR}")
@@ -23,6 +23,9 @@ target_link_libraries(percona-playback "dl")
 target_link_libraries(percona-playback ${Boost_LIBRARIES})
 target_link_libraries(percona-playback "tbb")
 
+install(TARGETS percona-playback RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
+
+## build plugins
 set(plugin_list "")
 set(plugin_sym_ist "")
 file(GLOB_RECURSE plugins "percona_playback/*/CMakeLists.txt")
@@ -45,5 +48,4 @@ string(REPLACE ";" "," PANDORA_BUILTIN_SYMBOLS_LIST "${plugin_sym_list}")
 set(PANDORA_BUILTIN_LOAD_SYMBOLS_LIST ${PANDORA_BUILTIN_SYMBOLS_LIST})
 configure_file("${PROJECT_SOURCE_DIR}/percona_playback/plugin_load_list.h.in" "${PROJECT_SOURCE_DIR}/percona_playback/plugin_load_list.h")
 
-install(TARGETS percona-playback RUNTIME DESTINATION bin LIBRARY DESTINATION lib)
 
