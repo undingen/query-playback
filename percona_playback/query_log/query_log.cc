@@ -33,6 +33,7 @@
 #include <sys/mman.h>
 
 #include <tbb/atomic.h>
+#include <tbb/parallel_sort.h>
 
 #include <percona_playback/percona_playback.h>
 #include <percona_playback/plugin.h>
@@ -183,7 +184,7 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   }
 
   if (g_accurate_mode)
-    std::stable_sort(entries->entries.begin(), entries->entries.end());
+    tbb::parallel_sort(entries->entries.begin(), entries->entries.end());
 
   return entries;
 }
