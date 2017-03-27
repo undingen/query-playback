@@ -82,6 +82,7 @@ void MySQLDBThread::disconnect()
 void MySQLDBThread::execute_query(const std::string &query, QueryResult *r,
 				  const QueryResult &)
 {
+  printf("q: %s\n", query.c_str());
   int mr;
   for(unsigned i = 0; i < options->max_retries + 1; ++i)
   {
