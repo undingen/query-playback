@@ -199,10 +199,11 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
 }
 
 bool QueryLogData::operator <(const QueryLogData& right) const {
+  /*
   // for same connections we make sure that the follow the order in the query log
   if (parseThreadId() == right.parseThreadId())
     return data.data() < right.data.data();
-
+  */
   if (g_use_innodb_trx_id) {
     uint64_t id_left = parseInnoDBTrxId();
     uint64_t id_right = right.parseInnoDBTrxId();
