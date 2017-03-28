@@ -116,6 +116,23 @@ static bool parse_time(boost::string_ref s, QueryLogData::TimePoint& start_time)
   return true;
 }
 
+struct CmpTime {
+  bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    if (left.parseThreadId() != right.parseThreadId())
+      return left.getStartTime() < right.getStartTime();
+    return left.data.data() < right.data.data();
+  }
+};
+struct CmpInnoDB {
+  bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    uint64_t id_left = left.parseInnoDBTrxId();
+    uint64_t id_right = right.parseInnoDBTrxId();
+    if (id_left && id_right)
+      return id_left < id_right;
+    return CmpTime()(left, right);
+  }
+};
+
 boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   boost::shared_ptr<QueryLogEntries> entries = boost::make_shared<QueryLogEntries>();
 
@@ -190,7 +207,9 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   std::cerr << _(" Finished reading log entries") << std::endl;
   if (!g_disable_sorting || g_accurate_mode) {
     std::cerr << _(" Start sorting log entries") << std::endl;
-    std::stable_sort(entries->entries.begin(), entries->entries.end());
+    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
+    if (g_use_innodb_trx_id)
+      std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
     std::cerr << _(" Finished sorting log entries") << std::endl;
   }
   std::cerr << _(" Finished preprocessing - starting playback...") << std::endl;
