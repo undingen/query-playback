@@ -59,6 +59,8 @@ static bool g_accurate_mode;
 static bool g_disable_sorting;
 static bool g_use_innodb_trx_id;
 
+static bool g_use_broken_sort;
+
 static boost::atomic<long long> g_max_behind_ns;
 
 extern percona_playback::DispatcherPlugin *g_dispatcher_plugin;
@@ -127,6 +129,7 @@ struct CmpInnoDB {
   bool operator()(const QueryLogData& left, const QueryLogData& right) {
     uint64_t id_left = left.parseInnoDBTrxId();
     uint64_t id_right = right.parseInnoDBTrxId();
+    //printf("foo: %ld %ld\n", id_left, id_right);
     if (id_left && id_right)
       return id_left < id_right;
     return CmpTime()(left, right);
@@ -207,12 +210,23 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   std::cerr << _(" Finished reading log entries") << std::endl;
   if (!g_disable_sorting || g_accurate_mode) {
     std::cerr << _(" Start sorting log entries") << std::endl;
-    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
-    if (g_use_innodb_trx_id)
-      std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
+    if (!g_use_broken_sort) {
+      std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
+      if (g_use_innodb_trx_id)
+        std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
+    } else {
+      std::stable_sort(entries->entries.begin(), entries->entries.end());
+    }
     std::cerr << _(" Finished sorting log entries") << std::endl;
   }
   std::cerr << _(" Finished preprocessing - starting playback...") << std::endl;
+
+  /*
+  std::cerr << "Final order: " << std::endl;
+  for (QueryLogEntries::Entries::iterator it = entries->entries.begin(), end = entries->entries.end(); it != end; ++it) {
+    printf("q: %s\n", it->data.to_string().c_str());
+  }
+  */
 
   return entries;
 }
@@ -456,6 +470,10 @@ public:
        po::value<bool>(&g_use_innodb_trx_id)->
         default_value(true),
        _("Uses the InnoDB Transaction Id to sort queries for improved accuracy. (Default: on)"))
+      ("query-log-use-broken-sort",
+       po::value<bool>(&g_use_broken_sort)->
+        default_value(true),
+       _("Use broken sort. (Default: on)"))
       ;
 
     return &options;
