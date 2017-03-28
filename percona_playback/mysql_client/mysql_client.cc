@@ -79,13 +79,18 @@ void MySQLDBThread::disconnect()
   mysql_close(&handle);
 }
 
+tbb::atomic<unsigned long> query_id;
+
 void MySQLDBThread::execute_query(const std::string &query, QueryResult *r,
 				  const QueryResult &)
 {
   int mr;
   for(unsigned i = 0; i < options->max_retries + 1; ++i)
   {
+    unsigned long id = ++query_id;
+    fprintf(stderr, "%15lu exec: %s\n", id, query.substr(0, std::min(100ul, query.length())).c_str());
     mr= mysql_real_query(&handle, query.c_str(), query.length());
+    fprintf(stderr, "query finished: %15lu    %d\n", id, mr);
     r->setError(mr);
     if(mr != 0)
     {
