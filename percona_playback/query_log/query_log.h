@@ -75,6 +75,8 @@ public:
   std::string getQuery(bool remove_timestamp);
 
   bool operator <(const QueryLogData& second) const;
+
+  bool operator ==(const QueryLogData& second) const { return data == second.data; }
 };
 
 class QueryLogEntry : public QueryEntry

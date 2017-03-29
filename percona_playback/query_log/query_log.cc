@@ -116,6 +116,33 @@ static bool parse_time(boost::string_ref s, QueryLogData::TimePoint& start_time)
   return true;
 }
 
+struct CmpTime {
+   bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    //if (left.parseThreadId() != right.parseThreadId())
+       return left.getStartTime() < right.getStartTime();
+    //return left.data.data() < right.data.data();
+   }
+ };
+ struct CmpInnoDB {
+  bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    uint64_t id_left = left.parseInnoDBTrxId();
+    uint64_t id_right = right.parseInnoDBTrxId();
+     //printf("foo: %ld %ld\n", id_left, id_right);
+     if (id_left && id_right)
+       return id_left < id_right;
+    return false;
+    //return CmpTime()(left, right);
+  }
+};
+
+struct CmpPos {
+  bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    if (left.parseThreadId() == right.parseThreadId())
+      return left.data.data() < right.data.data();
+    return false;
+   }
+ };
+
 boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   boost::shared_ptr<QueryLogEntries> entries = boost::make_shared<QueryLogEntries>();
 
@@ -190,7 +217,47 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   std::cerr << _(" Finished reading log entries") << std::endl;
   if (!g_disable_sorting || g_accurate_mode) {
     std::cerr << _(" Start sorting log entries") << std::endl;
+    /*
     std::stable_sort(entries->entries.begin(), entries->entries.end());
+
+
+    QueryLogEntries::Entries entries_copy = entries->entries;
+    std::stable_sort(entries_copy.begin(), entries_copy.end());
+    */
+    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
+    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
+    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpPos());
+
+
+    QueryLogEntries::Entries entries_copy = entries->entries;
+    //std::stable_sort(entries_copy.begin(), entries_copy.end());
+    std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpTime());
+    std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpInnoDB());
+    std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpPos());
+
+
+    int how_many_diffs = 0;
+
+    printf("%ld %ld\n", entries_copy.size(), entries->entries.size());
+    for (int i = 0; i<entries_copy.size(); ++i) {
+      if (!(entries_copy[i] == entries->entries[i])) {
+        how_many_diffs++;
+      }
+    }
+
+    if (how_many_diffs) {
+      printf("broken sort!\n");
+      abort();
+    }
+    /*
+    if (entries_copy != entries->entries) {
+      printf("broken sort!\n");
+      abort();
+    }
+    */
+
+
+
     std::cerr << _(" Finished sorting log entries") << std::endl;
   }
   std::cerr << _(" Finished preprocessing - starting playback...") << std::endl;
