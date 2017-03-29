@@ -234,9 +234,10 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
 
 
   if (g_verbose) {
+  QueryLogData::TimePoint tp = entries->entries[0].getStartTime();
   std::cerr << "Final order: " << std::endl;
   for (QueryLogEntries::Entries::iterator it = entries->entries.begin(), end = entries->entries.end(); it != end; ++it) {
-    printf("q: %s\n", it->data.to_string().c_str());
+    std::cerr << "q: " << it->getStartTime()-tp << "\t" << it->data.to_string().substr(std::min(it->data.size(), 200ul)) << std::endl;
   }
   }
 
