@@ -60,6 +60,7 @@ static bool g_disable_sorting;
 static bool g_use_innodb_trx_id;
 
 static bool g_use_broken_sort;
+static bool g_verbose;
 
 static boost::atomic<long long> g_max_behind_ns;
 
@@ -120,9 +121,9 @@ static bool parse_time(boost::string_ref s, QueryLogData::TimePoint& start_time)
 
 struct CmpTime {
   bool operator()(const QueryLogData& left, const QueryLogData& right) {
-    if (left.parseThreadId() != right.parseThreadId())
+    //if (left.parseThreadId() != right.parseThreadId())
       return left.getStartTime() < right.getStartTime();
-    return left.data.data() < right.data.data();
+    //return left.data.data() < right.data.data();
   }
 };
 struct CmpInnoDB {
@@ -132,7 +133,16 @@ struct CmpInnoDB {
     //printf("foo: %ld %ld\n", id_left, id_right);
     if (id_left && id_right)
       return id_left < id_right;
-    return CmpTime()(left, right);
+    return false;
+    //return CmpTime()(left, right);
+  }
+};
+
+struct CmpPos {
+  bool operator()(const QueryLogData& left, const QueryLogData& right) {
+    if (left.parseThreadId() == right.parseThreadId())
+      return left.data.data() < right.data.data();
+    return false;
   }
 };
 
@@ -214,6 +224,7 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
       std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
       if (g_use_innodb_trx_id)
         std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
+      std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpPos());
     } else {
       std::stable_sort(entries->entries.begin(), entries->entries.end());
     }
@@ -221,12 +232,14 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   }
   std::cerr << _(" Finished preprocessing - starting playback...") << std::endl;
 
-  /*
+
+  if (g_verbose) {
   std::cerr << "Final order: " << std::endl;
   for (QueryLogEntries::Entries::iterator it = entries->entries.begin(), end = entries->entries.end(); it != end; ++it) {
     printf("q: %s\n", it->data.to_string().c_str());
   }
-  */
+  }
+
 
   return entries;
 }
@@ -474,6 +487,10 @@ public:
        po::value<bool>(&g_use_broken_sort)->
         default_value(true),
        _("Use broken sort. (Default: on)"))
+      ("query-log-verbose",
+       po::value<bool>(&g_verbose)->
+        default_value(false),
+       _("Use broken sort. (Default: off)"))
       ;
 
     return &options;
