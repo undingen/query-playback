@@ -50,6 +50,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/make_shared.hpp>
 #include <boost/unordered_set.hpp>
+#include <boost/unordered_map.hpp>
 
 namespace po= boost::program_options;
 
@@ -143,6 +144,23 @@ struct CmpPos {
    }
  };
 
+
+
+void fixupStartTimes(QueryLogEntries::Entries& entries) {
+  boost::unordered_map<uint64_t, QueryLogData::TimePoint> last_timestmap;
+
+  int num_fixes = 0;
+  for (QueryLogEntries::Entries::iterator it=entries.begin(), end=entries.end(); it != end; ++it) {
+    QueryLogData::TimePoint& tp = last_timestmap[it->parseThreadId()];
+    if (it->getStartTime() < tp) {
+      it->start_time = tp;
+      ++num_fixes;
+    } else
+      tp = it->getStartTime();
+  }
+  printf("num fixes: %d\n", num_fixes);
+}
+
 boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   boost::shared_ptr<QueryLogEntries> entries = boost::make_shared<QueryLogEntries>();
 
@@ -217,24 +235,30 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
   std::cerr << _(" Finished reading log entries") << std::endl;
   if (!g_disable_sorting || g_accurate_mode) {
     std::cerr << _(" Start sorting log entries") << std::endl;
-    /*
+
+/*
+
+#if 0
     std::stable_sort(entries->entries.begin(), entries->entries.end());
 
 
     QueryLogEntries::Entries entries_copy = entries->entries;
     std::stable_sort(entries_copy.begin(), entries_copy.end());
-    */
+#else
+    fixupStartTimes(entries->entries);
     std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
-    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
-    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpPos());
+
+
+    //std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
+    //std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpPos());
 
 
     QueryLogEntries::Entries entries_copy = entries->entries;
     //std::stable_sort(entries_copy.begin(), entries_copy.end());
     std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpTime());
-    std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpInnoDB());
+    //std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpInnoDB());
     std::stable_sort(entries_copy.begin(), entries_copy.end(), CmpPos());
-
+#endif
 
     int how_many_diffs = 0;
 
@@ -249,14 +273,13 @@ boost::shared_ptr<QueryLogEntries> getEntries(boost::string_ref data)  {
       printf("broken sort!\n");
       abort();
     }
-    /*
-    if (entries_copy != entries->entries) {
-      printf("broken sort!\n");
-      abort();
-    }
-    */
 
+*/
 
+    fixupStartTimes(entries->entries);
+    std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpTime());
+    if (g_use_innodb_trx_id)
+      std::stable_sort(entries->entries.begin(), entries->entries.end(), CmpInnoDB());
 
     std::cerr << _(" Finished sorting log entries") << std::endl;
   }
